@@ -3,7 +3,7 @@
 // 백엔드: http://localhost:8000
 // =============================================
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "https://classtwin-production.up.railway.app";
 
 // 공통 fetch 래퍼 (타임아웃 포함)
 async function api(method, path, body = null, timeoutMs = 8000) {
