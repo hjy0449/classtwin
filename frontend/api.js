@@ -1,4 +1,4 @@
-// =============================================
+﻿// =============================================
 // Class Twin AI — API 연동 모듈
 // 백엔드: http://localhost:8000
 // =============================================
@@ -364,7 +364,7 @@ async function sendChatReal(prefix) {
     // 챗봇 입력은 항상 chat_input에 누적
     AppState.conditions.chat_input += " " + message;
   } catch (e) {
-    appendChatMsg(wrap, "죄송합니다. 잠시 후 다시 시도해주세요.", "ai");
+    console.error("챗봇 오류:", e); appendChatMsg(wrap, "오류: " + e.message, "ai");
   }
 }
 
