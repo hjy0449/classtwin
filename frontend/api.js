@@ -1,11 +1,11 @@
-﻿// =============================================
-// Class Twin AI ??API ?곕룞 紐⑤뱢
-// 諛깆뿏?? https://classtwin-production.up.railway.app
+// =============================================
+// Class Twin AI — API 연동 모듈
+// 백엔드: http://localhost:8000
 // =============================================
 
 const BASE_URL = "https://classtwin-production.up.railway.app";
 
-// 怨듯넻 fetch ?섑띁 (??꾩븘???ы븿)
+// 공통 fetch 래퍼 (타임아웃 포함)
 async function api(method, path, body = null, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -20,12 +20,12 @@ async function api(method, path, body = null, timeoutMs = 8000) {
     const res = await fetch(BASE_URL + path, options);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `?쒕쾭 ?ㅻ쪟 (${res.status})`);
+      throw new Error(err.detail || `서버 오류 (${res.status})`);
     }
     return await res.json();
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('諛깆뿏???묐떟 ?놁쓬 (??꾩븘??');
-    console.error(`API ?ㅻ쪟 [${method} ${path}]:`, e.message);
+    if (e.name === 'AbortError') throw new Error('백엔드 응답 없음 (타임아웃)');
+    console.error(`API 오류 [${method} ${path}]:`, e.message);
     throw e;
   } finally {
     clearTimeout(timer);
@@ -33,91 +33,94 @@ async function api(method, path, body = null, timeoutMs = 8000) {
 }
 
 // =============================================
-// 1?④퀎: ?숈깮 ?곗씠??// =============================================
+// 1단계: 학생 데이터
+// =============================================
 
 const StudentAPI = {
-  // ?꾩껜 ?숈깮 紐⑸줉 議고쉶
+  // 전체 학생 목록 조회
   getAll: () => api("GET", "/students"),
 
-  // ?숈깮 異붽?
+  // 학생 추가
   add: (student) => api("POST", "/students", student),
 
-  // ?숈깮 ?щ윭 紐???踰덉뿉 異붽?
+  // 학생 여러 명 한 번에 추가
   addBulk: (students) => api("POST", "/students/bulk", students),
 
-  // ?숈깮 ??젣
+  // 학생 삭제
   delete: (id) => api("DELETE", `/students/${id}`),
 
-  // 愿怨?異붽?
+  // 관계 추가
   addRelation: (relation) => api("POST", "/relations", relation),
 
-  // ?꾩껜 愿怨?議고쉶
+  // 전체 관계 조회
   getRelations: () => api("GET", "/relations"),
 };
 
 // =============================================
-// 2?④퀎: 梨쀫큸 議곌굔 ?뚯떛
+// 2단계: 챗봇 조건 파싱
 // =============================================
 
 const ConditionAPI = {
-  // ?먯뿰????援ъ“?붾맂 議곌굔?쇰줈 蹂??  parse: (chatInput) =>
+  // 자연어 → 구조화된 조건으로 변환
+  parse: (chatInput) =>
     api("POST", "/conditions/parse", { chat_input: chatInput }),
 
-  // 梨쀫큸 ???  chat: (message, history) =>
+  // 챗봇 대화
+  chat: (message, history) =>
     api("POST", "/conditions/chat", { message, history }),
 };
 
 // =============================================
-// 3?④퀎: 諛섎같???뚭퀬由ъ쬁
+// 3단계: 반배정 알고리즘
 // =============================================
 
 const AssignmentAPI = {
-  // 諛섎같???앹꽦 (?듭떖!)
+  // 반배정 생성 (핵심!)
   generate: (conditions) =>
     api("POST", "/assignments/class/generate", conditions),
 
-  // 諛곗젙 寃곌낵 議고쉶
+  // 배정 결과 조회
   getClass: (id) => api("GET", `/assignments/class/${id}`),
 
-  // 4?④퀎: ?덉젙??遺꾩꽍
+  // 4단계: 안정성 분석
   analyze: (id) => api("POST", `/assignments/class/${id}/analyze`),
 
-  // 5?④퀎: 諛곗튂 ?댁쑀 ?ㅻ챸
+  // 5단계: 배치 이유 설명
   explain: (id) => api("POST", `/assignments/class/${id}/explain`),
 
-  // ?먮━諛곗젙 ?앹꽦
+  // 자리배정 생성
   generateSeat: (conditions) =>
     api("POST", "/assignments/seat/generate", conditions),
 
-  // ?먮━ ?대젰 議고쉶
+  // 자리 이력 조회
   getSeatHistory: (classId) =>
     api("GET", `/assignments/seat/history/${classId}`),
 
-  // ?섎룞 議곗젙 ???듦퀎 ?ы룊媛
+  // 수동 조정 후 통계 재평가
   evaluateSeat: (classId, seatGrid) =>
     api("POST", "/assignments/seat/evaluate", { class_id: classId, seat_grid: seatGrid }),
 
-  // ?숈깮 ??紐낆쓽 ?먮━ 諛곗젙 ?댁쑀 (鍮좊Ⅸ LLM ?몄텧)
+  // 학생 한 명의 자리 배정 이유 (빠른 LLM 호출)
   explainSeatForStudent: (seatResult, studentName) =>
     api("POST", "/assignments/seat/student-reason", { seat_result: seatResult, student_name: studentName }, 30000),
 };
 
 // =============================================
-// 臾몄꽌 ?앹꽦
+// 문서 생성
 // =============================================
 
 const DocumentAPI = {
   generate: (assignmentId, docType) =>
     api("POST", `/documents/class/${assignmentId}?doc_type=${docType}`, null, 60000),
 
-  // ?먮━諛곗젙 臾몄꽌: seat_result瑜?洹몃?濡?body濡??꾨떖 (DB ?쇱슫?쒗듃由??뚰뵾)
-  // LLM??student_reasons?먯꽌 30紐낅텇 洹쇨굅瑜??묒꽦?섎뒓??8珥덈? ?먯＜ ?섍꺼??60珥덇퉴吏 ?덉슜
+  // 자리배정 문서: seat_result를 그대로 body로 전달 (DB 라운드트립 회피)
+  // LLM이 student_reasons에서 30명분 근거를 작성하느라 8초를 자주 넘겨서 60초까지 허용
   generateSeat: (seatResult, docType = "teacher", seatId = null) =>
     api("POST", "/documents/seat", { seat_result: seatResult, doc_type: docType, seat_id: seatId }, 60000),
 };
 
 // =============================================
-// ?곹깭 愿由?(???꾩뿭)
+// 상태 관리 (앱 전역)
 // =============================================
 
 const AppState = {
@@ -127,11 +130,11 @@ const AppState = {
   conditions: {
     absolute: [],
     balance: [
-      { label: "?깅퉬 洹좊벑", priority: 1 },
-      { label: "?깆쟻 遺꾪룷 洹좊벑", priority: 2 },
-      { label: "由щ뜑???숈깮 遺꾩궛", priority: 3 },
-      { label: "?댄뼢쨌?명뼢 洹좏삎", priority: 4 },
-      { label: "?꾪븰???곸쓳 諛곕젮", priority: 5 },
+      { label: "성비 균등", priority: 1 },
+      { label: "성적 분포 균등", priority: 2 },
+      { label: "리더십 학생 분산", priority: 3 },
+      { label: "내향·외향 균형", priority: 4 },
+      { label: "전학생 적응 배려", priority: 5 },
     ],
     chat_input: "",
   },
@@ -143,10 +146,10 @@ const AppState = {
 };
 
 // =============================================
-// UI ?좏떥由ы떚
+// UI 유틸리티
 // =============================================
 
-function showLoading(message = "泥섎━ 以?..") {
+function showLoading(message = "처리 중...") {
   const overlay = document.getElementById("loading-overlay");
   const msg = document.getElementById("loading-message");
   if (overlay) overlay.style.display = "flex";
@@ -167,21 +170,22 @@ function showToast(message, type = "success") {
 }
 
 function showError(message) {
-  showToast("?ㅻ쪟: " + message, "error");
+  showToast("오류: " + message, "error");
 }
 
 // =============================================
-// 1?④퀎: ?숈깮 ?곗씠??濡쒕뱶 諛??뚮뜑留?// =============================================
+// 1단계: 학생 데이터 로드 및 렌더링
+// =============================================
 
 async function loadStudents() {
   try {
-    showLoading("?숈깮 ?곗씠??遺덈윭?ㅻ뒗 以?..");
+    showLoading("학생 데이터 불러오는 중...");
     const data = await StudentAPI.getAll();
     AppState.students = data.students;
 
     renderStudentTable(data.students);
     updateStudentStats(data.students);
-    showToast(`?숈깮 ${data.total}紐?遺덈윭?붿뒿?덈떎`);
+    showToast(`학생 ${data.total}명 불러왔습니다`);
   } catch (e) {
     showError(e.message);
   } finally {
@@ -190,10 +194,10 @@ async function loadStudents() {
 }
 
 function renderStudentTable(students, conflictNames) {
-  // conflictNames: 媛덈벑 愿怨꾩뿉 ?덈뒗 ?숈깮 ?대쫫 Set
+  // conflictNames: 갈등 관계에 있는 학생 이름 Set
   const conflictSet = conflictNames || new Set(
     AppState.relations
-      .filter(r => r.type === '媛덈벑')
+      .filter(r => r.type === '갈등')
       .flatMap(r => [r.student_a, r.student_b])
   );
   const tbody = document.getElementById("ban-tbody");
@@ -202,40 +206,40 @@ function renderStudentTable(students, conflictNames) {
   const avatarColors = ['av-b','av-g','av-w','av-r','av-p'];
   tbody.innerHTML = students.map((s, i) => {
     const avatarCls = avatarColors[i % avatarColors.length];
-    const genderFlag = s.gender === '?? ? '媛덈벑' : '';
+    const genderFlag = s.gender === '여' ? '갈등' : '';
     const tags = [];
     if (s.special_needs) tags.push(`<span class="badge bw">${s.special_needs}</span>`);
-    if (s.attention_level === '??쓬') tags.push('<span class="badge bw">二쇱쓽?λ궙??/span>');
+    if (s.attention_level === '낮음') tags.push('<span class="badge bw">주의력낮음</span>');
     const noteHtml = s.teacher_note
-      ? `<span class="badge bg2" title="${s.teacher_note.replace(/"/g,'&quot;')}" style="cursor:pointer;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle" onclick="showNote('${s.name}',\`${s.teacher_note.replace(/`/g,"'")}\`)">?뱥 蹂닿린</span>`
-      : '<span class="badge bw">誘몄엯??/span>';
+      ? `<span class="badge bg2" title="${s.teacher_note.replace(/"/g,'&quot;')}" style="cursor:pointer;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle" onclick="showNote('${s.name}',\`${s.teacher_note.replace(/`/g,"'")}\`)">📋 보기</span>`
+      : '<span class="badge bw">미입력</span>';
     return `
-    <tr data-name="${s.name}" data-gender="${s.gender}" data-flag="${s.special_needs ? '?뱀닔' : conflictSet.has(s.name) ? '媛덈벑' : ''}">
+    <tr data-name="${s.name}" data-gender="${s.gender}" data-flag="${s.special_needs ? '특수' : conflictSet.has(s.name) ? '갈등' : ''}">
       <td><div class="name-cell"><div class="avatar ${avatarCls}">${s.name.slice(0,2)}</div>${s.name}</div></td>
       <td>${s.gender}</td>
       <td><span class="level-${s.academic_level}">${s.academic_level}</span></td>
       <td>${s.height}cm</td>
       <td>${s.vision}</td>
-      <td>${s.attention_level || '??}</td>
-      <td>${tags.join(' ') || '??}</td>
+      <td>${s.attention_level || '—'}</td>
+      <td>${tags.join(' ') || '—'}</td>
       <td>${noteHtml}</td>
     </tr>`;
   }).join("");
 
-  // ?뚭껄 誘몄엯???숈깮 ???낅뜲?댄듃
+  // 소견 미입력 학생 수 업데이트
   const noNote = students.filter(s => !s.teacher_note).length;
   const notice = document.getElementById('teacher-note-notice');
   if (notice) {
     notice.textContent = noNote > 0
-      ? `??援먯궗 ?뚭껄 誘몄엯???숈깮 ${noNote}紐???AI 遺꾩꽍 ?뺥솗?꾨? ?꾪빐 ?낅젰??沅뚯옣?⑸땲??
-      : '??紐⑤뱺 ?숈깮??援먯궗 ?뚭껄???낅젰?섏뼱 ?덉뒿?덈떎';
+      ? `⚠ 교사 소견 미입력 학생 ${noNote}명 — AI 분석 정확도를 위해 입력을 권장합니다`
+      : '✓ 모든 학생의 교사 소견이 입력되어 있습니다';
     notice.className = noNote > 0 ? 'notice notice-warn' : 'notice notice-success';
   }
 }
 
 function updateStudentStats(students) {
   const total = students.length;
-  const male = students.filter((s) => s.gender === "??).length;
+  const male = students.filter((s) => s.gender === "남").length;
   const female = total - male;
   const special = students.filter((s) => s.special_needs).length;
 
@@ -246,13 +250,13 @@ function updateStudentStats(students) {
   if (elGender) elGender.textContent = `${male}/${female}`;
   if (elSpecial) elSpecial.textContent = special;
 
-  // 媛덈벑 移댁슫?몃뒗 relations?먯꽌 怨꾩궛 (relations 濡쒕뱶 ??蹂꾨룄 ?낅뜲?댄듃??
+  // 갈등 카운트는 relations에서 계산 (relations 로드 후 별도 업데이트됨)
 }
 
 async function loadRelations() {
   try {
     const data = await StudentAPI.getRelations();
-    // 以묐났 ?쒓굅 (媛숈? ?띿씠 ?щ윭 踰???λ맂 寃쎌슦)
+    // 중복 제거 (같은 쌍이 여러 번 저장된 경우)
     const seen = new Set();
     const uniqueRelations = (data.relations || []).filter(r => {
       const key = [r.type, ...[r.student_a, r.student_b].sort()].join(':');
@@ -263,20 +267,20 @@ async function loadRelations() {
     AppState.relations = uniqueRelations;
     renderRelations(uniqueRelations);
 
-    // 媛덈벑 愿怨??듦퀎 ?낅뜲?댄듃
-    const conflictCount = data.relations.filter(r => r.type === '媛덈벑').length;
+    // 갈등 관계 통계 업데이트
+    const conflictCount = data.relations.filter(r => r.type === '갈등').length;
     const el = document.getElementById('ban-stat-conflict');
     if (el) el.textContent = conflictCount;
 
-    // 媛덈벑 ?숈깮 data-flag ?낅뜲?댄듃 (以묎컙 ?댁긽 ?ы븿)
-    const conflictSet = new Set(data.relations.filter(r => r.type === '媛덈벑' && ['?믪쓬','以묎컙'].includes(r.severity)).flatMap(r => [r.student_a, r.student_b]));
+    // 갈등 학생 data-flag 업데이트 (중간 이상 포함)
+    const conflictSet = new Set(data.relations.filter(r => r.type === '갈등' && ['높음','중간'].includes(r.severity)).flatMap(r => [r.student_a, r.student_b]));
     if (AppState.students.length > 0) {
       renderStudentTable(AppState.students, conflictSet);
     }
 
-    // ?숈깮 ?곗씠??濡쒕뱶 ??updateAbsConditions?먯꽌 ?쇨큵 泥섎━
+    // 학생 데이터 로드 후 updateAbsConditions에서 일괄 처리
   } catch (e) {
-    console.error("愿怨??곗씠??濡쒕뱶 ?ㅽ뙣:", e);
+    console.error("관계 데이터 로드 실패:", e);
   }
 }
 
@@ -285,17 +289,17 @@ function renderRelations(relations) {
   const friendList = document.querySelector("#bt-relation .grid2 > div:last-child");
   if (!conflictList || !friendList) return;
 
-  const conflicts = relations.filter((r) => r.type === "媛덈벑");
-  const friends = relations.filter((r) => r.type === "移쒗븿");
+  const conflicts = relations.filter((r) => r.type === "갈등");
+  const friends = relations.filter((r) => r.type === "친함");
 
   conflictList.innerHTML = `
     <div style="font-size:13px;font-weight:600;margin-bottom:10px">
-      媛덈벑 愿怨?<span class="badge br">${conflicts.length}??/span>
+      갈등 관계 <span class="badge br">${conflicts.length}쌍</span>
     </div>
     ${conflicts.map((r) => `
       <div class="relation-row">
         <div class="rel-icon ri2-red">!</div>
-        <div style="flex:1;font-size:12px">${r.student_a} ??${r.student_b}</div>
+        <div style="flex:1;font-size:12px">${r.student_a} ↔ ${r.student_b}</div>
         <span class="badge br">${r.severity}</span>
       </div>
     `).join("")}
@@ -303,20 +307,20 @@ function renderRelations(relations) {
 
   friendList.innerHTML = `
     <div style="font-size:13px;font-weight:600;margin-bottom:10px">
-      移쒗븳 愿怨?<span class="badge bg2">${friends.length}??/span>
+      친한 관계 <span class="badge bg2">${friends.length}쌍</span>
     </div>
     ${friends.map((r) => `
       <div class="relation-row">
-        <div class="rel-icon ri2-green">??/div>
-        <div style="flex:1;font-size:12px">${r.student_a} ??${r.student_b}</div>
-        <span class="badge bg2">${r.note || "移쒗븿"}</span>
+        <div class="rel-icon ri2-green">♥</div>
+        <div style="flex:1;font-size:12px">${r.student_a} ↔ ${r.student_b}</div>
+        <span class="badge bg2">${r.note || "친함"}</span>
       </div>
     `).join("")}
   `;
 }
 
 // =============================================
-// 2?④퀎: 梨쀫큸 議곌굔 ?뚯떛
+// 2단계: 챗봇 조건 파싱
 // =============================================
 
 async function sendChatReal(prefix) {
@@ -324,30 +328,31 @@ async function sendChatReal(prefix) {
   const message = input.value.trim();
   if (!message) return;
 
-  // UI???ъ슜??硫붿떆吏 異붽?
+  // UI에 사용자 메시지 추가
   const wrap = document.getElementById(`${prefix}-chat-wrap`);
   appendChatMsg(wrap, message, "user");
   input.value = "";
 
   try {
-    // GPT-4o API ?몄텧
+    // GPT-4o API 호출
     const data = await ConditionAPI.chat(message, AppState.chatHistory);
 
-    // AI ?묐떟 異붽?
+    // AI 응답 추가
     appendChatMsg(wrap, data.response, "ai");
 
-    // ????대젰 ???    AppState.chatHistory.push({ role: "user", content: message });
+    // 대화 이력 저장
+    AppState.chatHistory.push({ role: "user", content: message });
     AppState.chatHistory.push({ role: "assistant", content: data.response });
 
-    // parsed_conditions ?덉쑝硫?媛곴컖 異붽?
+    // parsed_conditions 있으면 각각 추가
     if (data.parsed_conditions && data.parsed_conditions.length > 0) {
       data.parsed_conditions.forEach(cond => addParsedCondition(prefix, cond));
     } else if (data.extracted_condition) {
       addParsedCondition(prefix, data.extracted_condition);
     } else {
-      // ?뚯떛 紐??덉뼱??硫붿떆吏 ?먯껜瑜?湲고? 議곌굔?쇰줈 異붽?
+      // 파싱 못 했어도 메시지 자체를 기타 조건으로 추가
       const fallbackCond = {
-        type: '湲고?',
+        type: '기타',
         student_a: null,
         student_b: null,
         students: [],
@@ -356,10 +361,10 @@ async function sendChatReal(prefix) {
       addParsedCondition(prefix, fallbackCond);
     }
     updateSummary();
-    // 梨쀫큸 ?낅젰? ??긽 chat_input???꾩쟻
+    // 챗봇 입력은 항상 chat_input에 누적
     AppState.conditions.chat_input += " " + message;
   } catch (e) {
-    appendChatMsg(wrap, "二꾩넚?⑸땲?? ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.", "ai");
+    appendChatMsg(wrap, "죄송합니다. 잠시 후 다시 시도해주세요.", "ai");
   }
 }
 
@@ -375,17 +380,17 @@ function addParsedCondition(prefix, condition) {
   const list = document.getElementById(`${prefix}-parsed-list`);
   if (!list || !condition) return;
 
-  const type = condition.type || '湲고?';
+  const type = condition.type || '기타';
   const studentA = condition.student_a || '';
   const studentB = condition.student_b || '';
   const note = condition.note || '';
 
-  // ?대쫫 ?덉쑝硫??대쫫+??? ?놁쑝硫?note ?띿뒪???쒖떆
+  // 이름 있으면 이름+타입, 없으면 note 텍스트 표시
   const label = studentA
-    ? `${studentA}${studentB ? ' ??' + studentB : ''} <span class="badge bb">${type}</span>`
-    : `${note || type} <span class="badge bb">湲고? 議곌굔</span>`;
+    ? `${studentA}${studentB ? ' ↔ ' + studentB : ''} <span class="badge bb">${type}</span>`
+    : `${note || type} <span class="badge bb">기타 조건</span>`;
 
-  // 以묐났 泥댄겕 (媛숈? ?띿뒪?몃㈃ 異붽? ????
+  // 중복 체크 (같은 텍스트면 추가 안 함)
   const existingTexts = Array.from(list.querySelectorAll('.cond-text')).map(e => e.textContent.trim());
   const labelText = label.replace(/<[^>]+>/g, '').trim();
   if (existingTexts.some(t => t.replace(/<[^>]+>/g, '').trim() === labelText)) return;
@@ -395,66 +400,68 @@ function addParsedCondition(prefix, condition) {
   el.innerHTML = `
     <div class="cond-icon ci-blue">A</div>
     <div class="cond-text">${label}</div>
-    <button class="del-btn" onclick="this.closest('.cond-item').remove();updateSummary()">??/button>
+    <button class="del-btn" onclick="this.closest('.cond-item').remove();updateSummary()">✕</button>
   `;
   list.appendChild(el);
   updateSummary();
 
-  // AppState??異붽?
+  // AppState에 추가
   if (studentA) {
     AppState.conditions.absolute.push(condition);
   } else {
-    // ?대쫫 ?녿뒗 湲고? 議곌굔: chat_input???꾩쟻 (諛곗젙 ??GPT???꾨떖)
+    // 이름 없는 기타 조건: chat_input에 누적 (배정 시 GPT에 전달)
     AppState.conditions.chat_input = (AppState.conditions.chat_input || '') + ' ' + (note || type);
   }
 }
 
 // =============================================
-// 3?④퀎: 諛섎같???ㅽ뻾 (?듭떖!)
+// 3단계: 반배정 실행 (핵심!)
 // =============================================
 
 async function runClassAssignment() {
   const n = typeof numClasses !== 'undefined' ? numClasses : 3;
   const absoluteConditions = collectAbsoluteConditions();
   
-  // 狩?援먯궗 ?뚭껄 ?뚯떛 ?꾨즺 ?뺤씤
+  // ⭐ 교사 소견 파싱 완료 확인
   const studentsWithNotes = AppState.students.filter(s => s.teacher_note && s.teacher_note.trim());
   if (studentsWithNotes.length > 0) {
-    showLoading("援먯궗 ?뚭껄 AI 遺꾩꽍 以?..");
-    let maxWait = 30; // 理쒕? 30珥??湲?    while (maxWait > 0) {
+    showLoading("교사 소견 AI 분석 중...");
+    let maxWait = 30; // 최대 30초 대기
+    while (maxWait > 0) {
       try {
         const status = await api("GET", "/notes/status");
         if (status.done) {
-          console.log(`??援먯궗 ?뚭껄 ?뚯떛 ?꾨즺: ${status.count}紐?);
-          // ?뚯떛 ?꾨즺 ???숈깮 ?곗씠???ㅼ떆 濡쒕뱶 (ai_traits ?ы븿)
+          console.log(`✅ 교사 소견 파싱 완료: ${status.count}명`);
+          // 파싱 완료 후 학생 데이터 다시 로드 (ai_traits 포함)
           const updatedData = await api("GET", "/students");
           AppState.students = updatedData.students;
           break;
         }
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 1珥??湲?        maxWait--;
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+        maxWait--;
       } catch (e) {
-        console.warn("?뚯떛 ?곹깭 ?뺤씤 ?ㅽ뙣:", e);
+        console.warn("파싱 상태 확인 실패:", e);
         break;
       }
     }
     if (maxWait === 0) {
-      showToast("?좑툘 援먯궗 ?뚭껄 遺꾩꽍???꾩쭅 ?꾨즺?섏? ?딆븯?듬땲?? ?깃꺽 湲곕컲 議곌굔???쒕?濡?諛섏쁺?섏? ?딆쓣 ???덉뒿?덈떎.", "warn");
+      showToast("⚠️ 교사 소견 분석이 아직 완료되지 않았습니다. 성격 기반 조건이 제대로 반영되지 않을 수 있습니다.", "warn");
     }
   }
   
   let resultA = null, resultB = null, resultC = null;
 
-  showLoading("諛섎같??怨꾩궛 以?.. (理쒕? 30珥?");
+  showLoading("반배정 계산 중... (최대 30초)");
   try {
-    // 諛곗튂??A (?덈?議곌굔 紐⑤몢 ?곸슜)
+    // 배치안 A (절대조건 모두 적용)
     resultA = await api("POST", "/assignments/class/generate", {
       absolute: absoluteConditions,
       balance: AppState.conditions.balance,
       chat_input: AppState.conditions.chat_input || "",
       num_classes: n,
-    }, 120000);  // 120珥?(援먯궗?뚭껄 諛곗튂 遺꾩꽍 ?ы븿)
+    }, 120000);  // 120초 (교사소견 배치 분석 포함)
 
-    // 諛곗튂??B (議곌굔 ?숈씪 + ?ㅻⅨ ?쒕뱶)
+    // 배치안 B (조건 동일 + 다른 시드)
     resultB = await api("POST", "/assignments/class/generate", {
       absolute: absoluteConditions,
       balance: AppState.conditions.balance,
@@ -463,7 +470,7 @@ async function runClassAssignment() {
       variant: 1,
     }, 90000);
 
-    // 諛곗튂??C (議곌굔 ?숈씪 + ???ㅻⅨ ?쒕뱶)
+    // 배치안 C (조건 동일 + 또 다른 시드)
     resultC = await api("POST", "/assignments/class/generate", {
       absolute: absoluteConditions,
       balance: AppState.conditions.balance,
@@ -472,17 +479,17 @@ async function runClassAssignment() {
       variant: 2,
     }, 90000);
 
-    showToast('AI 諛섎같???꾨즺!', 'success');
+    showToast('AI 반배정 완료!', 'success');
   } catch (e) {
-    console.warn('諛깆뿏???ㅽ뙣 ???ㅽ봽?쇱씤 ?대갚:', e.message);
-    showToast('?쒕쾭 ?묐떟 ?놁쓬 ???ㅽ봽?쇱씤 ?뚭퀬由ъ쬁?쇰줈 諛곗젙?⑸땲??, 'warn');
+    console.warn('백엔드 실패 → 오프라인 폴백:', e.message);
+    showToast('서버 응답 없음 — 오프라인 알고리즘으로 배정합니다', 'warn');
     try {
       resultA = makeFallbackAssignment(n, absoluteConditions);
       resultB = makeFallbackAssignment(n, []);
       resultC = makeFallbackAssignment(n, []);
     } catch (fe) {
-      console.error('?대갚???ㅽ뙣:', fe);
-      showToast('諛곗젙 ?뚭퀬由ъ쬁 ?ㅻ쪟: ' + fe.message, 'error');
+      console.error('폴백도 실패:', fe);
+      showToast('배정 알고리즘 오류: ' + fe.message, 'error');
     }
   } finally {
     hideLoading();
@@ -498,11 +505,11 @@ async function runClassAssignment() {
   try {
     renderAssignmentResult(resultA, resultB, resultC);
   } catch (e) {
-    console.error('?뚮뜑留??ㅻ쪟:', e);
-    // ?먮윭 ?덉뼱??理쒖냼???먯닔???쒖떆
+    console.error('렌더링 오류:', e);
+    // 에러 있어도 최소한 점수는 표시
     const ps = document.getElementById('score-a');
     if (ps) ps.textContent = resultA.stability_score ?? '-';
-    showToast('寃곌낵 ?쒖떆 ?ㅻ쪟: ' + e.message, 'error');
+    showToast('결과 표시 오류: ' + e.message, 'error');
   }
   goScreen('ban3');
 
@@ -514,7 +521,7 @@ async function runClassAssignment() {
 async function loadExplanationInBackground(assignmentId) {
   try {
     const explanation = await api("POST", `/assignments/class/${assignmentId}/explain`, null, 25000);
-    // 諛쏆븘???ㅻ챸??ban3 AI 諛곗튂 洹쇨굅 移대뱶??諛섏쁺
+    // 받아온 설명을 ban3 AI 배치 근거 카드에 반영
     if (explanation?.conditions_summary?.length) {
       renderReasonsFromExplanation(explanation);
     }
@@ -523,8 +530,8 @@ async function loadExplanationInBackground(assignmentId) {
       if (sub) sub.textContent = explanation.summary;
     }
   } catch (e) {
-    // ?ㅻ챸 濡쒕뱶 ?ㅽ뙣??議곗슜??臾댁떆 (寃곌낵 移대뱶???대? ?쒖떆??
-    console.warn('AI ?ㅻ챸 濡쒕뱶 ?ㅽ뙣:', e.message);
+    // 설명 로드 실패는 조용히 무시 (결과 카드는 이미 표시됨)
+    console.warn('AI 설명 로드 실패:', e.message);
   }
 }
 
@@ -533,30 +540,30 @@ function makeFallbackAssignment(numCls, absoluteConditions) {
     ? AppState.students
     : MOCK_STUDENTS;
 
-  // ?깅퀎쨌?깆쟻 洹좊벑 諛곕텇???꾪빐 ?욊린
+  // 성별·성적 균등 배분을 위해 섞기
   const shuffled = [...students].sort((a, b) => {
-    const order = { '??: 0, '以?: 1, '??: 2 };
+    const order = { '상': 0, '중': 1, '하': 2 };
     return (order[a.academic_level] || 1) - (order[b.academic_level] || 1);
   });
 
-  // ?덈? 議곌굔 ?뚯떛 (媛숈? 諛?/ 遺꾨━)
+  // 절대 조건 파싱 (같은 반 / 분리)
   const sameClass = [];
   const separate = [];
   absoluteConditions.forEach(c => {
-    if (c.type === '媛숈? 諛? && c.student_a && c.student_b)
+    if (c.type === '같은 반' && c.student_a && c.student_b)
       sameClass.push([c.student_a, c.student_b]);
-    if (c.type === '遺꾨━' && c.student_a && c.student_b)
+    if (c.type === '분리' && c.student_a && c.student_b)
       separate.push([c.student_a, c.student_b]);
   });
 
-  // ?쇱슫?쒕줈鍮덉쑝濡?諛?諛곗젙
+  // 라운드로빈으로 반 배정
   const classes = {};
   for (let i = 1; i <= numCls; i++) classes[`class_${i}`] = [];
   shuffled.forEach((s, i) => {
     classes[`class_${(i % numCls) + 1}`].push(s.name);
   });
 
-  // 媛숈? 諛?議곌굔 泥섎━
+  // 같은 반 조건 처리
   sameClass.forEach(([a, b]) => {
     let clsA = null, clsB = null;
     for (let i = 1; i <= numCls; i++) {
@@ -564,13 +571,13 @@ function makeFallbackAssignment(numCls, absoluteConditions) {
       if (classes[`class_${i}`].includes(b)) clsB = i;
     }
     if (clsA && clsB && clsA !== clsB) {
-      // b瑜?a??諛섏쑝濡??대룞
+      // b를 a의 반으로 이동
       classes[`class_${clsB}`] = classes[`class_${clsB}`].filter(n => n !== b);
       classes[`class_${clsA}`].push(b);
     }
   });
 
-  // 遺꾨━ 議곌굔 泥섎━
+  // 분리 조건 처리
   separate.forEach(([a, b]) => {
     let clsA = null, clsB = null;
     for (let i = 1; i <= numCls; i++) {
@@ -578,7 +585,7 @@ function makeFallbackAssignment(numCls, absoluteConditions) {
       if (classes[`class_${i}`].includes(b)) clsB = i;
     }
     if (clsA && clsB && clsA === clsB) {
-      // b瑜??ㅻⅨ 諛섏쑝濡??대룞
+      // b를 다른 반으로 이동
       const target = clsA === 1 ? 2 : 1;
       classes[`class_${clsA}`] = classes[`class_${clsA}`].filter(n => n !== b);
       classes[`class_${target}`].push(b);
@@ -586,7 +593,7 @@ function makeFallbackAssignment(numCls, absoluteConditions) {
   });
 
   const perClass = Math.round(students.length / numCls);
-  const classCounts = Object.values(classes).map(c => c.length).join('쨌');
+  const classCounts = Object.values(classes).map(c => c.length).join('·');
 
   return {
     assignment_id: 0,
@@ -599,7 +606,7 @@ function makeFallbackAssignment(numCls, absoluteConditions) {
     },
     conditions_met: {
       met: absoluteConditions.map(c =>
-        `${c.student_a}${c.student_b ? ' ??' + c.student_b : ''} ??${c.type} ?곸슜`
+        `${c.student_a}${c.student_b ? ' ↔ ' + c.student_b : ''} — ${c.type} 적용`
       ),
       unmet: [],
     },
@@ -607,11 +614,11 @@ function makeFallbackAssignment(numCls, absoluteConditions) {
 }
 
 function collectAbsoluteConditions() {
-  // DOM ?뚯떛 ???AppState.conditions.absolute瑜?吏곸젒 ?ъ슜
-  // (DOM ?띿뒪???뚯떛? badge媛 ?щ윭 媛쒖씪 ??type???섎せ ?≫엳??踰꾧렇 ?덉쓬)
+  // DOM 파싱 대신 AppState.conditions.absolute를 직접 사용
+  // (DOM 텍스트 파싱은 badge가 여러 개일 때 type이 잘못 잡히는 버그 있음)
   return AppState.conditions.absolute.filter(c => {
-    // student_b ?녿뒗 ?뱀닔援먯쑁 議곌굔? ?쒖쇅 (?뚭퀬由ъ쬁?먯꽌 蹂꾨룄 泥섎━)
-    if (c.type === '遺꾨━' || c.type === '媛숈? 諛?) {
+    // student_b 없는 특수교육 조건은 제외 (알고리즘에서 별도 처리)
+    if (c.type === '분리' || c.type === '같은 반') {
       return c.student_a && c.student_b && c.student_b !== 'None';
     }
     return true;
@@ -625,11 +632,11 @@ function renderAssignmentResult(result, resultB, resultC) {
   const conditionsMet = result.conditions_met;
   const n = typeof numClasses !== 'undefined' ? numClasses : Object.keys(classes).length;
 
-  // ===== 諛곗튂??A ?낅뜲?댄듃 =====
+  // ===== 배치안 A 업데이트 =====
   const planScore = document.querySelector("#p0 .plan-score");
   if (planScore) planScore.textContent = score;
 
-  const classCounts = Array.from({length: n}, (_, i) => (classes[`class_${i+1}`] || []).length).join('쨌');
+  const classCounts = Array.from({length: n}, (_, i) => (classes[`class_${i+1}`] || []).length).join('·');
   const statClassEl = document.querySelectorAll("#p0 .stat-card")[1]?.querySelector(".stat-num");
   if (statClassEl) statClassEl.textContent = classCounts;
 
@@ -637,110 +644,111 @@ function renderAssignmentResult(result, resultB, resultC) {
   renderReasons(conditionsMet);
   renderStabilityDetail(stability, conditionsMet);
 
-  // 諛섎퀎 ?숈깮 ??stat ?낅뜲?댄듃
+  // 반별 학생 수 stat 업데이트
   const stats = document.querySelectorAll("#p0 .stat-card");
   if (stats[1]) {
-    const counts = Object.values(classes).map(c => c.length).join('쨌');
+    const counts = Object.values(classes).map(c => c.length).join('·');
     const el = stats[1].querySelector(".stat-num");
     if (el) el.textContent = counts;
   }
 
-  // 由щ뜑???숈깮 紐⑸줉 ?낅뜲?댄듃
+  // 리더십 학생 목록 업데이트
   if (result.leader_students && result.leader_students.length > 0) {
     const leaderNames = new Set(result.leader_students.map(l => l.name));
 
-    // ?숈깮 ?뚯씠釉붿뿉 由щ뜑???쒓렇 異붽?
+    // 학생 테이블에 리더십 태그 추가
     document.querySelectorAll('#ban-tbody tr').forEach(tr => {
       const name = tr.dataset.name;
       if (leaderNames.has(name)) {
         const tagCell = tr.querySelector('td:nth-child(7)');
-        if (tagCell && !tagCell.innerHTML.includes('由щ뜑??)) {
-          tagCell.innerHTML = `<span class="badge bb">由щ뜑??/span> ` + tagCell.innerHTML;
+        if (tagCell && !tagCell.innerHTML.includes('리더십')) {
+          tagCell.innerHTML = `<span class="badge bb">리더십</span> ` + tagCell.innerHTML;
         }
       }
     });
 
-    // AppState??由щ뜑 ?숈깮 ???    AppState.leaderStudents = result.leader_students;
+    // AppState에 리더 학생 저장
+    AppState.leaderStudents = result.leader_students;
 
-    // 梨쀫큸 議곌굔 紐⑸줉??"由щ뜑???숈깮 洹좊벑 遺꾩궛" ?먮룞 異붽?
+    // 챗봇 조건 목록에 "리더십 학생 균등 분산" 자동 추가
     const chatList = document.getElementById('ban-parsed-list');
-    if (chatList && !chatList.innerHTML.includes('由щ뜑??)) {
+    if (chatList && !chatList.innerHTML.includes('리더십')) {
       const names = result.leader_students.map(l => l.name).join(', ');
       const el = document.createElement('div');
       el.className = 'cond-item';
       el.innerHTML = `
         <div class="cond-icon ci-blue">A</div>
-        <div class="cond-text">由щ뜑???숈깮 (${names}) 媛?諛?洹좊벑 遺꾩궛 <span class="badge bb">AI 遺꾩꽍</span></div>
-        <button class="del-btn" onclick="this.closest('.cond-item').remove();updateSummary()">??/button>
+        <div class="cond-text">리더십 학생 (${names}) 각 반 균등 분산 <span class="badge bb">AI 분석</span></div>
+        <button class="del-btn" onclick="this.closest('.cond-item').remove();updateSummary()">✕</button>
       `;
       chatList.appendChild(el);
-      AppState.conditions.chat_input += ' 由щ뜑???숈깮??媛?諛섏뿉 洹좊벑?섍쾶 諛곗튂?댁＜?몄슂';
+      AppState.conditions.chat_input += ' 리더십 학생을 각 반에 균등하게 배치해주세요';
       updateSummary();
     }
 
-    showToast(`由щ뜑???숈깮 ${result.leader_students.length}紐??뺤씤 ??洹좊벑 遺꾩궛 議곌굔 異붽???, 'success');
+    showToast(`리더십 학생 ${result.leader_students.length}명 확인 → 균등 분산 조건 추가됨`, 'success');
   }
 
 
 
-  // ===== 諛곗튂??B ?낅뜲?댄듃 =====
+  // ===== 배치안 B 업데이트 =====
   const plan1 = document.getElementById('plan-1');
   if (plan1 && resultB) {
     const bClasses = resultB.classes;
     const bScore = resultB.stability_score;
     const bStab = resultB.stability_detail;
     const bMet = resultB.conditions_met;
-    const bCounts = Array.from({length: n}, (_, i) => (bClasses[`class_${i+1}`] || []).length).join('쨌');
+    const bCounts = Array.from({length: n}, (_, i) => (bClasses[`class_${i+1}`] || []).length).join('·');
     const bUnmet = bMet?.unmet || [];
     plan1.innerHTML = `
       <div class="grid4" style="margin-bottom:14px">
-        <div class="stat-card"><div class="stat-num score-w">${bMet?.met_count ?? 0}/${bMet?.total ?? 0}</div><div class="stat-label">議곌굔 異⑹”</div></div>
-        <div class="stat-card"><div class="stat-num" style="color:#185FA5;font-size:14px">${bCounts}</div><div class="stat-label">諛섎퀎 ?숈깮 ??/div></div>
-        <div class="stat-card"><div class="stat-num score-w">${bStab?.conflict_pairs_in_same_class ?? 0}</div><div class="stat-label">媛덈벑 ??/div></div>
-        <div class="stat-card"><div class="stat-num score-w">${bStab?.isolated_students ?? 0}</div><div class="stat-label">怨좊┰ ?숈깮</div></div>
+        <div class="stat-card"><div class="stat-num score-w">${bMet?.met_count ?? 0}/${bMet?.total ?? 0}</div><div class="stat-label">조건 충족</div></div>
+        <div class="stat-card"><div class="stat-num" style="color:#185FA5;font-size:14px">${bCounts}</div><div class="stat-label">반별 학생 수</div></div>
+        <div class="stat-card"><div class="stat-num score-w">${bStab?.conflict_pairs_in_same_class ?? 0}</div><div class="stat-label">갈등 쌍</div></div>
+        <div class="stat-card"><div class="stat-num score-w">${bStab?.isolated_students ?? 0}</div><div class="stat-label">고립 학생</div></div>
       </div>
       ${renderClassGrid(bClasses, n)}
       <div class="card" style="margin-top:10px">
-        <div class="card-title" style="margin-bottom:10px">誘몄땐議?議곌굔</div>
+        <div class="card-title" style="margin-bottom:10px">미충족 조건</div>
         ${bUnmet.length > 0
-          ? bUnmet.map(u => `<div class="reason-row"><div class="ri2 ri2-r">??/div><div class="reason-text">${u}</div></div>`).join('')
-          : '<div class="reason-row"><div class="ri2 ri2-g">??/div><div class="reason-text">紐⑤뱺 議곌굔 異⑹”</div></div>'
+          ? bUnmet.map(u => `<div class="reason-row"><div class="ri2 ri2-r">✕</div><div class="reason-text">${u}</div></div>`).join('')
+          : '<div class="reason-row"><div class="ri2 ri2-g">✓</div><div class="reason-text">모든 조건 충족</div></div>'
         }
       </div>`;
-    // B ???먯닔 ?낅뜲?댄듃
+    // B 탭 점수 업데이트
     updatePlanTab('score-b', 'bar-b', 'info-b', bScore, bStab);
   }
 
-  // ===== 諛곗튂??C ?낅뜲?댄듃 =====
+  // ===== 배치안 C 업데이트 =====
   const plan2 = document.getElementById('plan-2');
   if (plan2 && resultC) {
     const cClasses = resultC.classes;
     const cScore = resultC.stability_score;
     const cStab = resultC.stability_detail;
     const cMet = resultC.conditions_met;
-    const cCounts = Array.from({length: n}, (_, i) => (cClasses[`class_${i+1}`] || []).length).join('쨌');
+    const cCounts = Array.from({length: n}, (_, i) => (cClasses[`class_${i+1}`] || []).length).join('·');
     const cUnmet = cMet?.unmet || [];
     plan2.innerHTML = `
-      <div class="notice notice-danger" style="margin-bottom:12px">諛곗튂??C???덈? 議곌굔 ?놁씠 洹좏삎留??곸슜??諛곗튂?낅땲?? 諛곗튂??A瑜?沅뚯옣?⑸땲??</div>
+      <div class="notice notice-danger" style="margin-bottom:12px">배치안 C는 절대 조건 없이 균형만 적용한 배치입니다. 배치안 A를 권장합니다.</div>
       <div class="grid4" style="margin-bottom:14px">
-        <div class="stat-card"><div class="stat-num score-r">${cMet?.met_count ?? 0}/${cMet?.total ?? 0}</div><div class="stat-label">議곌굔 異⑹”</div></div>
-        <div class="stat-card"><div class="stat-num" style="color:#185FA5;font-size:14px">${cCounts}</div><div class="stat-label">諛섎퀎 ?숈깮 ??/div></div>
-        <div class="stat-card"><div class="stat-num score-r">${cStab?.conflict_pairs_in_same_class ?? 0}</div><div class="stat-label">媛덈벑 ??/div></div>
-        <div class="stat-card"><div class="stat-num score-r">${cStab?.isolated_students ?? 0}</div><div class="stat-label">怨좊┰ ?숈깮</div></div>
+        <div class="stat-card"><div class="stat-num score-r">${cMet?.met_count ?? 0}/${cMet?.total ?? 0}</div><div class="stat-label">조건 충족</div></div>
+        <div class="stat-card"><div class="stat-num" style="color:#185FA5;font-size:14px">${cCounts}</div><div class="stat-label">반별 학생 수</div></div>
+        <div class="stat-card"><div class="stat-num score-r">${cStab?.conflict_pairs_in_same_class ?? 0}</div><div class="stat-label">갈등 쌍</div></div>
+        <div class="stat-card"><div class="stat-num score-r">${cStab?.isolated_students ?? 0}</div><div class="stat-label">고립 학생</div></div>
       </div>
       ${renderClassGrid(cClasses, n)}
       <div class="card" style="margin-top:10px">
-        <div class="card-title" style="margin-bottom:10px">誘몄땐議?議곌굔</div>
+        <div class="card-title" style="margin-bottom:10px">미충족 조건</div>
         ${cUnmet.length > 0
-          ? cUnmet.map(u => `<div class="reason-row"><div class="ri2 ri2-r">??/div><div class="reason-text">${u}</div></div>`).join('')
-          : '<div class="reason-row"><div class="ri2 ri2-b">i</div><div class="reason-text">?깆쟻쨌?깅퉬 洹좊벑 諛곕텇留??곸슜??/div></div>'
+          ? cUnmet.map(u => `<div class="reason-row"><div class="ri2 ri2-r">✕</div><div class="reason-text">${u}</div></div>`).join('')
+          : '<div class="reason-row"><div class="ri2 ri2-b">i</div><div class="reason-text">성적·성비 균등 배분만 적용됨</div></div>'
         }
       </div>`;
-    // C ???먯닔 ?낅뜲?댄듃
+    // C 탭 점수 업데이트
     updatePlanTab('score-c', 'bar-c', 'info-c', cScore, cStab);
   }
 
-  // A ?먯닔 湲곗??쇰줈 B, C ?쒖떆 ?먯닔 議곗젙 (A > B > C ??긽 蹂댁옣)
+  // A 점수 기준으로 B, C 표시 점수 조정 (A > B > C 항상 보장)
   const displayA = score;
   const displayB = Math.max(displayA - 8, 50);
   const displayC = Math.max(displayA - 15, 45);
@@ -749,7 +757,8 @@ function renderAssignmentResult(result, resultB, resultC) {
   if (resultB) updatePlanTab('score-b', 'bar-b', 'info-b', displayB, resultB.stability_detail);
   if (resultC) updatePlanTab('score-c', 'bar-c', 'info-c', displayC, resultC.stability_detail);
 
-  // AI 異붿쿇 諛곗?????긽 A??  ['rec-badge-a', 'rec-badge-b', 'rec-badge-c'].forEach(id => {
+  // AI 추천 배지는 항상 A에
+  ['rec-badge-a', 'rec-badge-b', 'rec-badge-c'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -757,7 +766,8 @@ function renderAssignmentResult(result, resultB, resultC) {
   if (badgeA) badgeA.style.display = '';
 }
 
-// ?뺤젙 ?붾㈃(ban4) ?ㅼ젣 諛곗젙 寃곌낵濡??뚮뜑留?function renderConfirmScreen() {
+// 확정 화면(ban4) 실제 배정 결과로 렌더링
+function renderConfirmScreen() {
   const result = AppState.currentResult;
   if (!result) return;
 
@@ -766,21 +776,23 @@ function renderAssignmentResult(result, resultB, resultC) {
   const wrap = document.getElementById('ban4-classes-wrap');
   if (!wrap) return;
 
-  // ?숈깮 ?뺣낫 留?(?뱀닔援먯쑁 ???쒓렇??
+  // 학생 정보 맵 (특수교육 등 태그용)
   const studentMap = {};
   (AppState.students || []).forEach(s => { studentMap[s.name] = s; });
 
-  // 移쒗븳 愿怨?留?  const friendSet = new Set();
-  (AppState.relations || []).filter(r => r.type === '移쒗븿').forEach(r => {
+  // 친한 관계 맵
+  const friendSet = new Set();
+  (AppState.relations || []).filter(r => r.type === '친함').forEach(r => {
     friendSet.add(r.student_a);
     friendSet.add(r.student_b);
   });
 
-  // 而щ읆 ??寃곗젙 (3諛??댄븯硫?2?? 洹??댁긽?대㈃ 3??
+  // 컬럼 수 결정 (3반 이하면 2열, 그 이상이면 3열)
   const cols = n <= 2 ? n : n <= 6 ? 3 : 3;
   const classKeys = Array.from({length: n}, (_, i) => `class_${i+1}`);
 
-  // ?됱쑝濡??섎늻湲?  const rows = [];
+  // 행으로 나누기
+  const rows = [];
   for (let i = 0; i < classKeys.length; i += cols) {
     rows.push(classKeys.slice(i, i + cols));
   }
@@ -794,17 +806,17 @@ function renderAssignmentResult(result, resultB, resultC) {
           const s = studentMap[name] || {};
           let cls = 'schip-selectable';
           let label = name;
-          if (s.special_needs) { cls += ' spec'; label += '??; }
-          if (friendSet.has(name)) { cls += ' spec'; label += '??; }
+          if (s.special_needs) { cls += ' spec'; label += '★'; }
+          if (friendSet.has(name)) { cls += ' spec'; label += '♥'; }
           return `<span class="${cls}" onclick="banClickChipDyn(this,'${clsNum}')">${label}</span>`;
         }).join('');
         return `
           <div class="class-final">
             <div class="class-final-header">
-              <div class="class-final-name">${clsNum}諛?/div>
+              <div class="class-final-name">${clsNum}반</div>
               <div style="display:flex;gap:8px;align-items:center">
-                <span class="badge bg2" id="ban4-score-${clsNum}">?덉젙??怨꾩궛以?/span>
-                <span style="font-size:12px;color:#888" id="ban4-cnt-${clsNum}">${names.length}紐?/span>
+                <span class="badge bg2" id="ban4-score-${clsNum}">안정성 계산중</span>
+                <span style="font-size:12px;color:#888" id="ban4-cnt-${clsNum}">${names.length}명</span>
               </div>
             </div>
             <div id="ban4-cls-${clsNum}" style="line-height:2">${chipsHtml}</div>
@@ -813,20 +825,21 @@ function renderAssignmentResult(result, resultB, resultC) {
     </div>
   `).join('');
 
-  // 蹂寃쎌궗??珥덇린??  const changeLog = document.getElementById('ban-change-log');
-  if (changeLog) { changeLog.innerHTML = ''; changeLog.textContent = '蹂寃??ы빆 ?놁쓬'; }
+  // 변경사항 초기화
+  const changeLog = document.getElementById('ban-change-log');
+  if (changeLog) { changeLog.innerHTML = ''; changeLog.textContent = '변경 사항 없음'; }
 
-  // ?덉젙???먯닔 ?쒖떆
+  // 안정성 점수 표시
   const stability = result.stability_detail;
   if (stability) {
     classKeys.forEach((key, i) => {
       const el = document.getElementById(`ban4-score-${i+1}`);
-      if (el) el.textContent = `?덉젙??${result.stability_score}`;
+      if (el) el.textContent = `안정성 ${result.stability_score}`;
     });
   }
 }
 
-// ?숈쟻 ?앹꽦??移??대┃ 泥섎━
+// 동적 생성된 칩 클릭 처리
 let banDynSel = null;
 function banClickChipDyn(el, cls) {
   if (!banDynSel) {
@@ -838,7 +851,7 @@ function banClickChipDyn(el, cls) {
       banDynSel = null;
       return;
     }
-    // 媛숈? 諛섏씠硫?痍⑥냼
+    // 같은 반이면 취소
     const fromId = banDynSel.closest('[id^="ban4-cls-"]')?.id?.replace('ban4-cls-', '');
     const toId = el.closest('[id^="ban4-cls-"]')?.id?.replace('ban4-cls-', '');
     if (fromId === toId) {
@@ -846,23 +859,23 @@ function banClickChipDyn(el, cls) {
       banDynSel = null;
       return;
     }
-    // ?먮━ ?대룞
+    // 자리 이동
     el.parentElement.insertBefore(banDynSel, el);
 
-    // 移댁슫???낅뜲?댄듃
+    // 카운트 업데이트
     [`ban4-cls-${fromId}`, `ban4-cls-${toId}`].forEach(cid => {
       const container = document.getElementById(cid);
       const cntEl = document.getElementById(cid.replace('cls', 'cnt'));
-      if (container && cntEl) cntEl.textContent = container.children.length + '紐?;
+      if (container && cntEl) cntEl.textContent = container.children.length + '명';
     });
 
-    // 蹂寃?濡쒓렇
+    // 변경 로그
     const log = document.getElementById('ban-change-log');
     if (log) {
-      if (log.textContent.trim() === '蹂寃??ы빆 ?놁쓬') log.innerHTML = '';
+      if (log.textContent.trim() === '변경 사항 없음') log.innerHTML = '';
       const logEl = document.createElement('div');
       logEl.className = 'history-item';
-      logEl.innerHTML = `<span style="font-weight:500">${banDynSel.textContent}</span><span style="color:#888">${fromId}諛???${toId}諛?/span><span class="badge bw" style="margin-left:auto">?섎룞</span>`;
+      logEl.innerHTML = `<span style="font-weight:500">${banDynSel.textContent}</span><span style="color:#888">${fromId}반 → ${toId}반</span><span class="badge bw" style="margin-left:auto">수동</span>`;
       log.appendChild(logEl);
     }
     banDynSel.classList.remove('selected-chip');
@@ -870,7 +883,7 @@ function banClickChipDyn(el, cls) {
   }
 }
 
-// ???먯닔/諛??뺣낫 ?낅뜲?댄듃 ?ы띁
+// 탭 점수/바/정보 업데이트 헬퍼
 function updatePlanTab(scoreId, barId, infoId, sc, stab) {
   const ps = document.getElementById(scoreId);
   const bar = document.getElementById(barId);
@@ -883,17 +896,17 @@ function updatePlanTab(scoreId, barId, infoId, sc, stab) {
     bar.style.width = sc + '%';
     bar.className = 'bar-fill ' + (sc >= 85 ? 'fill-g' : sc >= 65 ? 'fill-w' : 'fill-r');
   }
-  if (info) info.textContent = `媛덈벑??${stab?.conflict_pairs_in_same_class ?? 0}媛?쨌 怨좊┰ ${stab?.isolated_students ?? 0}紐?;
+  if (info) info.textContent = `갈등쌍 ${stab?.conflict_pairs_in_same_class ?? 0}개 · 고립 ${stab?.isolated_students ?? 0}명`;
 }
 
-// 諛섎퀎 ?숈깮 紐⑸줉 洹몃━??HTML ?앹꽦 (B, C???ы띁)
+// 반별 학생 목록 그리드 HTML 생성 (B, C용 헬퍼)
 function renderClassGrid(classes, n) {
   const keys = Array.from({length: n}, (_, i) => `class_${i+1}`);
   return `<div style="display:grid;grid-template-columns:repeat(${Math.min(n,3)},1fr);gap:10px;margin-top:10px">
     ${keys.map((key, i) => {
       const names = classes[key] || [];
       return `<div class="class-col">
-        <div class="class-col-title">${i+1}諛?<span class="badge bg2">${names.length}紐?/span></div>
+        <div class="class-col-title">${i+1}반 <span class="badge bg2">${names.length}명</span></div>
         ${names.map(name => `<span class="schip">${name}</span>`).join('')}
       </div>`;
     }).join('')}
@@ -904,10 +917,12 @@ function renderClassStudents(planId, classes, numCls) {
   const container = document.getElementById(planId);
   if (!container) return;
 
-  // 湲곗〈 class-col ?곸뿭 ?쒓굅 ???ъ깮??  const existingGrid = container.querySelector('.grid2, .class-grid-wrap');
-  const insertBefore = container.querySelector('.card'); // AI 諛곗튂 洹쇨굅 移대뱶 ??  const n = numCls || Object.keys(classes).length;
+  // 기존 class-col 영역 제거 후 재생성
+  const existingGrid = container.querySelector('.grid2, .class-grid-wrap');
+  const insertBefore = container.querySelector('.card'); // AI 배치 근거 카드 앞
+  const n = numCls || Object.keys(classes).length;
 
-  // 諛?而щ읆?ㅼ쓣 ?댁쓣 ?곸뿭 ?앹꽦
+  // 반 컬럼들을 담을 영역 생성
   const wrap = document.createElement('div');
   wrap.className = 'class-grid-wrap';
   wrap.style.cssText = `display:grid;grid-template-columns:repeat(${Math.min(n,3)},1fr);gap:12px;margin-bottom:12px`;
@@ -918,23 +933,23 @@ function renderClassStudents(planId, classes, numCls) {
     const col = document.createElement('div');
     col.className = 'class-col';
     col.innerHTML = `
-      <div class="class-col-title">${i}諛?<span class="badge bg2">${students.length}紐?/span></div>
+      <div class="class-col-title">${i}반 <span class="badge bg2">${students.length}명</span></div>
       <div>${chipsHtml}</div>
-      <div class="chip-meta">${students.length}紐?/div>
+      <div class="chip-meta">${students.length}명</div>
     `;
     wrap.appendChild(col);
   }
 
-  // 湲곗〈 諛?而щ읆 ?곸뿭 援먯껜
+  // 기존 반 컬럼 영역 교체
   const oldWrap = container.querySelector('.class-grid-wrap');
   if (oldWrap) oldWrap.replaceWith(wrap);
   else if (insertBefore) container.insertBefore(wrap, insertBefore);
   else container.appendChild(wrap);
 
-  // grid4 stat ?낅뜲?댄듃
+  // grid4 stat 업데이트
   const statCards = container.querySelectorAll('.stat-card');
   if (statCards[1]) {
-    const cnt = Array.from({length: n}, (_, i) => (classes[`class_${i+1}`] || []).length).join('쨌');
+    const cnt = Array.from({length: n}, (_, i) => (classes[`class_${i+1}`] || []).length).join('·');
     statCards[1].querySelector('.stat-num').textContent = cnt;
   }
 }
@@ -954,12 +969,12 @@ function renderReasonsFromExplanation(explanation) {
   const absConditions = AppState.conditions?.absolute || [];
   let html = '';
 
-  // 1. 遺꾨━ 議곌굔 ?꾨? ??以꾨줈 臾띔린
+  // 1. 분리 조건 전부 한 줄로 묶기
   const seen = new Set();
   const allSep = [
-    ...absConditions.filter(c => c.type === '遺꾨━'),
-    ...relations.filter(r => r.type === '媛덈벑' && ['?믪쓬','以묎컙'].includes(r.severity))
-      .map(r => ({type:'遺꾨━', student_a: r.student_a, student_b: r.student_b}))
+    ...absConditions.filter(c => c.type === '분리'),
+    ...relations.filter(r => r.type === '갈등' && ['높음','중간'].includes(r.severity))
+      .map(r => ({type:'분리', student_a: r.student_a, student_b: r.student_b}))
   ].filter(c => {
     const key = [c.student_a, c.student_b].sort().join(':');
     if (seen.has(key)) return false;
@@ -971,20 +986,20 @@ function renderReasonsFromExplanation(explanation) {
     const parts = allSep.map(c => {
       let clsA = '', clsB = '';
       Object.entries(classes).forEach(([k,v]) => {
-        if (v.includes(c.student_a)) clsA = k.replace('class_','') + '諛?;
-        if (v.includes(c.student_b)) clsB = k.replace('class_','') + '諛?;
+        if (v.includes(c.student_a)) clsA = k.replace('class_','') + '반';
+        if (v.includes(c.student_b)) clsB = k.replace('class_','') + '반';
       });
-      return `${c.student_a}(${clsA})??{c.student_b}(${clsB})`;
+      return `${c.student_a}(${clsA})↔${c.student_b}(${clsB})`;
     }).join(', ');
-    html += `<div class="reason-row"><div class="ri2 ri2-g">??/div><div class="reason-text">媛덈벑 愿怨?遺꾨━ ??${parts} ?꾨즺</div></div>`;
+    html += `<div class="reason-row"><div class="ri2 ri2-g">✓</div><div class="reason-text">갈등 관계 분리 — ${parts} 완료</div></div>`;
   }
 
-  // 2. 媛숈?諛?議곌굔 ?꾨? ??以꾨줈 臾띔린
+  // 2. 같은반 조건 전부 한 줄로 묶기
   const seenSame = new Set();
   const allSame = [
-    ...absConditions.filter(c => c.type === '媛숈? 諛?),
-    ...relations.filter(r => r.type === '移쒗븿' && r.severity === '?믪쓬')
-      .map(r => ({type:'媛숈? 諛?, student_a: r.student_a, student_b: r.student_b}))
+    ...absConditions.filter(c => c.type === '같은 반'),
+    ...relations.filter(r => r.type === '친함' && r.severity === '높음')
+      .map(r => ({type:'같은 반', student_a: r.student_a, student_b: r.student_b}))
   ].filter(c => {
     const key = [c.student_a, c.student_b].sort().join(':');
     if (seenSame.has(key)) return false;
@@ -996,23 +1011,23 @@ function renderReasonsFromExplanation(explanation) {
     const parts = allSame.map(c => {
       let cls = '';
       Object.entries(classes).forEach(([k,v]) => {
-        if (v.includes(c.student_a)) cls = k.replace('class_','') + '諛?;
+        if (v.includes(c.student_a)) cls = k.replace('class_','') + '반';
       });
-      return `${c.student_a}쨌${c.student_b}(${cls})`;
+      return `${c.student_a}·${c.student_b}(${cls})`;
     }).join(', ');
-    html += `<div class="reason-row"><div class="ri2 ri2-g">??/div><div class="reason-text">媛숈? 諛?諛곗젙 ??${parts} ?꾨즺</div></div>`;
+    html += `<div class="reason-row"><div class="ri2 ri2-g">✓</div><div class="reason-text">같은 반 배정 — ${parts} 완료</div></div>`;
   }
 
-  // 3. ?뱀닔援먯쑁 洹좊벑 諛곗튂
+  // 3. 특수교육 균등 배치
   if (specialNames.size > 0) {
-    html += `<div class="reason-row"><div class="ri2 ri2-g">??/div><div class="reason-text">?뱀닔援먯쑁 ??곸옄 ${specialNames.size}紐낆씠 紐⑤뱺 諛섏뿉 洹좊벑?섍쾶 諛곗튂?섏뼱 ?곸젅??吏?먯쓣 諛쏆쓣 ???덈룄濡??섏??듬땲??</div></div>`;
+    html += `<div class="reason-row"><div class="ri2 ri2-g">✓</div><div class="reason-text">특수교육 대상자 ${specialNames.size}명이 모든 반에 균등하게 배치되어 적절한 지원을 받을 수 있도록 하였습니다.</div></div>`;
   }
 
-  // 4. AI summary (?뱀닔援먯쑁 ?대쫫 ?쒓굅, 諛?踰덊샇 ?쇰컲??
+  // 4. AI summary (특수교육 이름 제거, 반 번호 일반화)
   if (explanation?.summary) {
     let s = explanation.summary;
-    specialNames.forEach(name => { s = s.replace(new RegExp(name, 'g'), '?뱀닔援먯쑁 ??곸옄'); });
-    s = s.replace(/[1-9]諛?怨?[1-9]諛?, [1-9]諛?* 紐⑤몢/g, '紐⑤뱺 諛섏씠');
+    specialNames.forEach(name => { s = s.replace(new RegExp(name, 'g'), '특수교육 대상자'); });
+    s = s.replace(/[1-9]반(과 [1-9]반|, [1-9]반)* 모두/g, '모든 반이');
     html += `<div class="reason-row"><div class="ri2 ri2-b">i</div><div class="reason-text">${s}</div></div>`;
   }
 
@@ -1026,23 +1041,24 @@ function renderReasons(conditionsMet) {
   const met = conditionsMet?.met || [];
   const unmet = conditionsMet?.unmet || [];
 
-  // 以묐났 ?쒓굅: 媛숈? ?띿뒪????踰????섏삤寃?  const uniqueMet = [...new Set(met)];
+  // 중복 제거: 같은 텍스트 두 번 안 나오게
+  const uniqueMet = [...new Set(met)];
   const uniqueUnmet = [...new Set(unmet)];
 
   const html = [
     ...uniqueMet.map(m => `
       <div class="reason-row">
-        <div class="ri2 ri2-g">??/div>
+        <div class="ri2 ri2-g">✓</div>
         <div class="reason-text">${m}</div>
       </div>`),
     ...uniqueUnmet.map(u => `
       <div class="reason-row">
-        <div class="ri2 ri2-r">??/div>
-        <div class="reason-text">${u} <small style="color:#888">??誘몄땐議?/small></div>
+        <div class="ri2 ri2-r">✕</div>
+        <div class="reason-text">${u} <small style="color:#888">— 미충족</small></div>
       </div>`),
   ].join("");
 
-  // 湲곗〈 reason-row ?꾨? ?쒓굅 ???덈줈 ?쎌엯
+  // 기존 reason-row 전부 제거 후 새로 삽입
   card.querySelectorAll(".reason-row").forEach(el => el.remove());
   const title = card.querySelector(".card-title");
   if (title) title.insertAdjacentHTML("afterend", html);
@@ -1052,9 +1068,9 @@ function renderStabilityDetail(stability, conditionsMet) {
   if (!stability) return;
 
   const stats = document.querySelectorAll("#p0 .stat-card");
-  // HTML ?쒖꽌: [0]議곌굔異⑹”, [1]諛섎퀎?숈깮?? [2]媛덈벑?? [3]怨좊┰?숈깮
+  // HTML 순서: [0]조건충족, [1]반별학생수, [2]갈등쌍, [3]고립학생
 
-  // [0] 議곌굔 異⑹”
+  // [0] 조건 충족
   if (conditionsMet && stats[0]) {
     const condMet = conditionsMet.met_count ?? 0;
     const condTotal = conditionsMet.total ?? ((conditionsMet.met?.length ?? 0) + (conditionsMet.unmet?.length ?? 0));
@@ -1065,26 +1081,27 @@ function renderStabilityDetail(stability, conditionsMet) {
     }
   }
 
-  // [2] 媛덈벑 ??  if (stats[2]) stats[2].querySelector(".stat-num").textContent =
+  // [2] 갈등 쌍
+  if (stats[2]) stats[2].querySelector(".stat-num").textContent =
     stability.conflict_pairs_in_same_class || 0;
 
-  // [3] 怨좊┰ ?숈깮
+  // [3] 고립 학생
   if (stats[3]) stats[3].querySelector(".stat-num").textContent =
     stability.isolated_students || 0;
 }
 
 // =============================================
-// 4?④퀎: ?덉젙??吏???곸꽭 遺꾩꽍
+// 4단계: 안정성 지수 상세 분석
 // =============================================
 
 async function analyzeStability() {
   if (!AppState.currentAssignmentId) return;
 
   try {
-    showLoading("?덉젙??遺꾩꽍 以?..");
+    showLoading("안정성 분석 중...");
     const data = await AssignmentAPI.analyze(AppState.currentAssignmentId);
     renderStabilityDetail(data);
-    showToast("?덉젙??遺꾩꽍 ?꾨즺");
+    showToast("안정성 분석 완료");
   } catch (e) {
     showError(e.message);
   } finally {
@@ -1093,23 +1110,23 @@ async function analyzeStability() {
 }
 
 // =============================================
-// 5?④퀎: 諛곗튂 ?댁쑀 ?ㅻ챸 (GPT-4o)
+// 5단계: 배치 이유 설명 (GPT-4o)
 // =============================================
 
 async function explainAndGenerateDocs() {
   try {
-    showLoading("GPT-4o媛 諛곗튂 ?댁쑀瑜?遺꾩꽍?섍퀬 ?덉뒿?덈떎...");
+    showLoading("GPT-4o가 배치 이유를 분석하고 있습니다...");
     let explanation = {};
     if (AppState.currentAssignmentId) {
       try {
         explanation = await AssignmentAPI.explain(AppState.currentAssignmentId);
       } catch(e) {
-        console.warn("AI ?ㅻ챸 濡쒕뱶 ?ㅽ뙣, 湲곕낯 ?댁슜?쇰줈 吏꾪뻾:", e.message);
+        console.warn("AI 설명 로드 실패, 기본 내용으로 진행:", e.message);
       }
     }
     updateDocumentContent(explanation);
     goScreen('ban5');
-    showToast("臾몄꽌 ?앹꽦 ?꾨즺!");
+    showToast("문서 생성 완료!");
   } catch (e) {
     showError(e.message);
   } finally {
@@ -1122,7 +1139,7 @@ function updateDocumentContent(explanation) {
   if (!result) return;
 
   const now = new Date();
-  const dateStr = `${now.getFullYear()}??${now.getMonth()+1}??${now.getDate()}??;
+  const dateStr = `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
   const n = result.total_students || 0;
   const numCls = result.num_classes || 0;
   const score = result.stability_score || 0;
@@ -1130,39 +1147,40 @@ function updateDocumentContent(explanation) {
   const cMet = result.conditions_met || {};
   const classes = result.classes || {};
 
-  // 諛섎퀎 ?숈깮 ??  const counts = Object.values(classes).map(c => c.length).join('쨌');
+  // 반별 학생 수
+  const counts = Object.values(classes).map(c => c.length).join('·');
 
-  // ?? ?곷떒 ?듦퀎 ?낅뜲?댄듃 ??
+  // ── 상단 통계 업데이트 ──
   const el = id => document.getElementById(id);
   if (el('ban5-score')) el('ban5-score').textContent = score;
   if (el('ban5-counts')) el('ban5-counts').textContent = counts;
   if (el('ban5-conflict')) el('ban5-conflict').textContent = stab.conflict_pairs_in_same_class ?? 0;
-  // 議곌굔 異⑹”: ?ㅼ젣 ?덈?議곌굔 ??(遺꾨━+媛숈?諛??뱀닔援먯쑁1媛?
+  // 조건 충족: 실제 절대조건 수 (분리+같은반+특수교육1개)
   const absCount = (AppState.conditions?.absolute || []).filter(c =>
-    c.type === '遺꾨━' || c.type === '媛숈? 諛?
+    c.type === '분리' || c.type === '같은 반'
   ).length;
   const hasSpecial = (AppState.students || []).some(s => s.special_needs);
   const realTotal = absCount + (hasSpecial ? 1 : 0);
   const realMet = realTotal - (cMet.unmet?.length ?? 0);
   if (el('ban5-cond')) el('ban5-cond').textContent = `${Math.max(0, realMet)}/${realTotal}`;
-  if (el('ban5-sub')) el('ban5-sub').textContent = `${dateStr} ?뺤젙 쨌 ?숆툒 ?덉젙??吏??${score}??;
+  if (el('ban5-sub')) el('ban5-sub').textContent = `${dateStr} 확정 · 학급 안정성 지수 ${score}점`;
 
-  // ?? 援먯궗??由ы룷???낅뜲?댄듃 ??
+  // ── 교사용 리포트 업데이트 ──
   if (el('ban5-date')) el('ban5-date').textContent = dateStr;
-  if (el('ban5-target')) el('ban5-target').textContent = `?꾩껜 ${n}紐?쨌 ${numCls}媛?諛?;
-  if (el('ban5-stability')) el('ban5-stability').textContent = `${score}??/ 100??;
+  if (el('ban5-target')) el('ban5-target').textContent = `전체 ${n}명 · ${numCls}개 반`;
+  if (el('ban5-stability')) el('ban5-stability').textContent = `${score}점 / 100점`;
 
   const metList = cMet.met || [];
   const unmetList = cMet.unmet || [];
   if (el('ban5-cond-detail')) {
-    el('ban5-cond-detail').textContent = `珥?${cMet.total ?? 0}媛?議곌굔 以?${cMet.met_count ?? 0}媛?異⑹”${unmetList.length > 0 ? ` 쨌 誘몄땐議?${unmetList.length}媛? : ' 쨌 ?꾨? 異⑹”'}`;
+    el('ban5-cond-detail').textContent = `총 ${cMet.total ?? 0}개 조건 중 ${cMet.met_count ?? 0}개 충족${unmetList.length > 0 ? ` · 미충족 ${unmetList.length}개` : ' · 전부 충족'}`;
   }
   const specialCount = (AppState.students || []).filter(s => s.special_needs).length;
   if (el('ban5-special')) {
-    el('ban5-special').textContent = `?뱀닔援먯쑁 ${specialCount}紐?諛곕젮 ?꾨즺 쨌 怨좊┰ ?숈깮 ${stab.isolated_students ?? 0}紐?쨌 媛덈벑 ??${stab.conflict_pairs_in_same_class ?? 0}??;
+    el('ban5-special').textContent = `특수교육 ${specialCount}명 배려 완료 · 고립 학생 ${stab.isolated_students ?? 0}명 · 갈등 쌍 ${stab.conflict_pairs_in_same_class ?? 0}쌍`;
   }
 
-  // ?? AI 諛곗튂 洹쇨굅 (?ㅼ젣 議곌굔 湲곕컲?쇰줈 ?곸꽭?섍쾶) ??
+  // ── AI 배치 근거 (실제 조건 기반으로 상세하게) ──
   const reasonsEl = el('ban5-reasons');
   if (reasonsEl) {
     const absConditions = AppState.conditions?.absolute || [];
@@ -1170,21 +1188,21 @@ function updateDocumentContent(explanation) {
 
     let html = '';
 
-    // ?덈? 議곌굔 (遺꾨━/媛숈?諛? - 醫낅쪟蹂꾨줈 臾띠뼱???쒖떆
+    // 절대 조건 (분리/같은반) - 종류별로 묶어서 표시
     const seen = new Set();
     const allAbsRows = [
-      ...absConditions.filter(c => c.type === '遺꾨━' || c.type === '媛숈? 諛?),
+      ...absConditions.filter(c => c.type === '분리' || c.type === '같은 반'),
       ...(AppState.relations || []).filter(r =>
-        (r.type === '媛덈벑' && ['?믪쓬','以묎컙'].includes(r.severity)) ||
-        (r.type === '移쒗븿' && r.severity === '?믪쓬')
+        (r.type === '갈등' && ['높음','중간'].includes(r.severity)) ||
+        (r.type === '친함' && r.severity === '높음')
       ).map(r => ({
-        type: r.type === '媛덈벑' ? '遺꾨━' : '媛숈? 諛?,
+        type: r.type === '갈등' ? '분리' : '같은 반',
         student_a: r.student_a,
         student_b: r.student_b
       }))
     ];
 
-    // 遺꾨━ 議곌굔 臾띔린
+    // 분리 조건 묶기
     const sepList = [], sameList = [];
     allAbsRows.forEach(cond => {
       const key = `${cond.type}:${[cond.student_a, cond.student_b].sort().join(':')}`;
@@ -1192,70 +1210,71 @@ function updateDocumentContent(explanation) {
       seen.add(key);
       let clsA = '', clsB = '';
       Object.entries(classes).forEach(([cls, names]) => {
-        if (names.includes(cond.student_a)) clsA = cls.replace('class_','') + '諛?;
-        if (names.includes(cond.student_b)) clsB = cls.replace('class_','') + '諛?;
+        if (names.includes(cond.student_a)) clsA = cls.replace('class_','') + '반';
+        if (names.includes(cond.student_b)) clsB = cls.replace('class_','') + '반';
       });
       const isOk = !unmetList.some(u => u.includes(cond.student_a) && u.includes(cond.student_b));
-      if (cond.type === '遺꾨━') {
+      if (cond.type === '분리') {
         sepList.push({a: cond.student_a, b: cond.student_b, clsA, clsB, isOk});
       } else {
         sameList.push({a: cond.student_a, b: cond.student_b, clsA, clsB, isOk});
       }
     });
 
-    // 遺꾨━ 議곌굔 ??以꾨줈 臾띔린
+    // 분리 조건 한 줄로 묶기
     if (sepList.length > 0) {
       const allOk = sepList.every(s => s.isOk);
-      const detail = sepList.map(s => `${s.a}(${s.clsA})??{s.b}(${s.clsB})`).join(', ');
-      html += `<div class="reason-row"><div class="ri2 ${allOk ? 'ri2-g' : 'ri2-r'}">${allOk ? '?? : '??}</div><div class="reason-text">媛덈벑 愿怨?遺꾨━ ??${detail} ${allOk ? '?꾨즺' : '?쇰? ?ㅽ뙣'}</div></div>`;
+      const detail = sepList.map(s => `${s.a}(${s.clsA})↔${s.b}(${s.clsB})`).join(', ');
+      html += `<div class="reason-row"><div class="ri2 ${allOk ? 'ri2-g' : 'ri2-r'}">${allOk ? '✓' : '✕'}</div><div class="reason-text">갈등 관계 분리 — ${detail} ${allOk ? '완료' : '일부 실패'}</div></div>`;
     }
 
-    // 媛숈?諛?議곌굔 ??以꾨줈 臾띔린
+    // 같은반 조건 한 줄로 묶기
     if (sameList.length > 0) {
       const allOk = sameList.every(s => s.isOk);
-      const detail = sameList.map(s => `${s.a}쨌${s.b}(${s.clsA})`).join(', ');
-      html += `<div class="reason-row"><div class="ri2 ${allOk ? 'ri2-g' : 'ri2-r'}">${allOk ? '?? : '??}</div><div class="reason-text">媛숈? 諛?諛곗젙 ??${detail} ${allOk ? '?꾨즺' : '?쇰? ?ㅽ뙣'}</div></div>`;
+      const detail = sameList.map(s => `${s.a}·${s.b}(${s.clsA})`).join(', ');
+      html += `<div class="reason-row"><div class="ri2 ${allOk ? 'ri2-g' : 'ri2-r'}">${allOk ? '✓' : '✕'}</div><div class="reason-text">같은 반 배정 — ${detail} ${allOk ? '완료' : '일부 실패'}</div></div>`;
     }
 
-    // ?뱀닔援먯쑁 - ?대쫫 ?멸툒 ?놁씠 洹좊벑 諛곗튂 ?쒖떆
+    // 특수교육 - 이름 언급 없이 균등 배치 표시
     const specialCount = (AppState.students || []).filter(s => s.special_needs).length;
     if (specialCount > 0) {
-      html += `<div class="reason-row"><div class="ri2 ri2-g">??/div><div class="reason-text">?뱀닔援먯쑁 ??곸옄 ${specialCount}紐낆씠 紐⑤뱺 諛섏뿉 洹좊벑?섍쾶 諛곗튂?섏뼱 ?곸젅??吏?먯쓣 諛쏆쓣 ???덈룄濡??섏??듬땲??</div></div>`;
+      html += `<div class="reason-row"><div class="ri2 ri2-g">✓</div><div class="reason-text">특수교육 대상자 ${specialCount}명이 모든 반에 균등하게 배치되어 적절한 지원을 받을 수 있도록 하였습니다.</div></div>`;
     }
 
-    // 梨쀫큸 湲고? 議곌굔
+    // 챗봇 기타 조건
     const chatInput = AppState.conditions?.chat_input?.trim();
     if (chatInput) {
-      html += `<div class="reason-row"><div class="ri2 ri2-b">i</div><div class="reason-text">梨쀫큸 議곌굔 諛섏쁺: "${chatInput}"</div></div>`;
+      html += `<div class="reason-row"><div class="ri2 ri2-b">i</div><div class="reason-text">챗봇 조건 반영: "${chatInput}"</div></div>`;
     }
 
-    // 紐⑤뱺 諛?洹좊벑 諛곗젙 ?붿빟 (??以꾨줈)
-    html += `<div class="reason-row"><div class="ri2 ri2-b">i</div><div class="reason-text">紐⑤뱺 諛섏쓽 ?깅퉬? ?깆쟻??洹좏삎???대（?꾨줉 諛곗젙?섏뿀?쇰ŉ, 由щ뜑???덈뒗 ?숈깮?ㅻ룄 媛?諛섏뿉 洹좊벑?섍쾶 遺꾩궛?섏뿀?듬땲?? 紐⑤뱺 諛섏씠 ?덉젙?곸씤 ?숆툒 ?댁쁺??媛?ν븷 寃껋쑝濡??먮떒?⑸땲??</div></div>`;
+    // 모든 반 균등 배정 요약 (한 줄로)
+    html += `<div class="reason-row"><div class="ri2 ri2-b">i</div><div class="reason-text">모든 반의 성비와 성적이 균형을 이루도록 배정되었으며, 리더십 있는 학생들도 각 반에 균등하게 분산되었습니다. 모든 반이 안정적인 학급 운영이 가능할 것으로 판단됩니다.</div></div>`;
 
-    reasonsEl.innerHTML = html || '<div style="color:#aaa;font-size:13px">議곌굔 ?놁쓬</div>';
+    reasonsEl.innerHTML = html || '<div style="color:#aaa;font-size:13px">조건 없음</div>';
   }
 }
 
-// ?숈깮 諛곗젙 ?댁쑀 寃??async function searchStudentReason() {
+// 학생 배정 이유 검색
+async function searchStudentReason() {
   const input = document.getElementById('ban5-search-input');
   const resultEl = document.getElementById('ban5-search-result');
   const name = input.value.trim();
   if (!name) return;
 
   resultEl.style.display = 'block';
-  resultEl.textContent = '??AI媛 遺꾩꽍 以?..';
+  resultEl.textContent = '⏳ AI가 분석 중...';
 
   const result = AppState.currentResult;
-  if (!result) { resultEl.textContent = '諛곗젙 寃곌낵媛 ?놁뒿?덈떎.'; return; }
+  if (!result) { resultEl.textContent = '배정 결과가 없습니다.'; return; }
 
   const classes = result.classes || {};
   let clsNum = '';
   Object.entries(classes).forEach(([cls, names]) => {
-    if (names.includes(name)) clsNum = cls.replace('class_','') + '諛?;
+    if (names.includes(name)) clsNum = cls.replace('class_','') + '반';
   });
 
   if (!clsNum) {
-    resultEl.textContent = `"${name}" ?숈깮??李얠쓣 ???놁뒿?덈떎.`;
+    resultEl.textContent = `"${name}" 학생을 찾을 수 없습니다.`;
     return;
   }
 
@@ -1263,31 +1282,32 @@ function updateDocumentContent(explanation) {
   const relations = (AppState.relations || []).filter(r => r.student_a === name || r.student_b === name);
   const absConditions = (AppState.conditions?.absolute || []).filter(c => c.student_a === name || c.student_b === name);
 
-  const prompt = `?숈깮 "${name}"??${clsNum}??諛곗젙???댁쑀瑜?3-4臾몄옣?쇰줈 ?ㅻ챸?댁＜?몄슂.
+  const prompt = `학생 "${name}"이 ${clsNum}에 배정된 이유를 3-4문장으로 설명해주세요.
 
-?숈깮 ?뺣낫: ${JSON.stringify(student || {})}
-愿??愿怨? ${JSON.stringify(relations)}
-?곸슜???덈? 議곌굔: ${JSON.stringify(absConditions)}
-?꾩껜 諛섎퀎 諛곗튂: ${JSON.stringify(Object.fromEntries(Object.entries(classes).map(([k,v]) => [k, v.includes(name) ? '??諛? : v.length+'紐?])))}
+학생 정보: ${JSON.stringify(student || {})}
+관련 관계: ${JSON.stringify(relations)}
+적용된 절대 조건: ${JSON.stringify(absConditions)}
+전체 반별 배치: ${JSON.stringify(Object.fromEntries(Object.entries(classes).map(([k,v]) => [k, v.includes(name) ? '이 반' : v.length+'명'])))}
 
-?쒓뎅?대줈 援먯궗?먭쾶 ?ㅻ챸?섎벏 移쒖젅?섍쾶 ?듬??댁＜?몄슂.`;
+한국어로 교사에게 설명하듯 친절하게 답변해주세요.`;
 
   try {
-    // 諛깆뿏?쒕? ?듯빐 ?몄텧
+    // 백엔드를 통해 호출
     const res = await fetch(`${BASE_URL}/student/reason`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ name, class_num: clsNum, student, relations, abs_conditions: absConditions })
     });
     const data = await res.json();
-    resultEl.innerHTML = `<strong>${name} ??${clsNum}</strong><br><br>${data.reason || '?ㅻ챸 ?놁쓬'}`;
+    resultEl.innerHTML = `<strong>${name} → ${clsNum}</strong><br><br>${data.reason || '설명 없음'}`;
   } catch(e) {
-    resultEl.innerHTML = `<strong>${name} ??${clsNum}</strong><br><br>AI ?곌껐 ?ㅻ쪟. ?쒕쾭瑜??뺤씤?댁＜?몄슂.`;
+    resultEl.innerHTML = `<strong>${name} → ${clsNum}</strong><br><br>AI 연결 오류. 서버를 확인해주세요.`;
   }
 }
 
 async function getApiKey() {
-  // 諛깆뿏?쒖뿉????媛?몄삤湲?  try {
+  // 백엔드에서 키 가져오기
+  try {
     const res = await fetch(`${BASE_URL}/config/api-key`);
     const data = await res.json();
     return data.key || '';
@@ -1295,25 +1315,25 @@ async function getApiKey() {
 }
 
 // =============================================
-// ?먮━諛곗젙 ?ㅽ뻾
+// 자리배정 실행
 // =============================================
 
 async function runSeatAssignment() {
   try {
-    showLoading("AI媛 ?먮━瑜?諛곗튂?섍퀬 ?덉뒿?덈떎...");
+    showLoading("AI가 자리를 배치하고 있습니다...");
 
-    // ??諛곗튂 ?쒖옉 ???섎룞 蹂寃?移댁슫??由ъ뀑
+    // 새 배치 시작 시 수동 변경 카운트 리셋
     window.swapCount = 0;
 
-    // ?덈? 議곌굔 ?섏쭛 (seat1 DOM)
+    // 절대 조건 수집 (seat1 DOM)
     const absItems = document.querySelectorAll("#seat-abs-list .cond-item");
     const absolute = [];
     absItems.forEach(item => {
       const text = item.querySelector(".cond-text")?.textContent?.trim() || "";
-      absolute.push({ type: "?덈?", description: text });
+      absolute.push({ type: "절대", description: text });
     });
 
-    // 洹좏삎 議곌굔 ?곗꽑?쒖쐞 ?섏쭛 (seat-plist???쒕옒洹??쒖꽌 洹몃?濡?
+    // 균형 조건 우선순위 수집 (seat-plist의 드래그 순서 그대로)
     const balance = [];
     document.querySelectorAll("#seat-plist .priority-item").forEach((item, idx) => {
       const label = item.querySelector(".priority-label")?.textContent?.trim() || "";
@@ -1338,7 +1358,7 @@ async function runSeatAssignment() {
   }
 }
 
-// === seat4 (理쒖쥌 ?뺤젙) ?숈쟻 濡쒕뱶 ===
+// === seat4 (최종 확정) 동적 로드 ===
 function loadSeat4Screen() {
   const result = AppState.currentSeatResult;
   if (!result) return;
@@ -1347,28 +1367,29 @@ function loadSeat4Screen() {
   const swapCnt = (typeof window !== "undefined" && typeof window.swapCount === "number") ? window.swapCount : 0;
 
   const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  setText("seat4-stat-equity", equity_score ?? "??);
-  setText("seat4-stat-conflict", conflict_adjacent_pairs ?? "??);
-  setText("seat4-stat-cond", (conflict_adjacent_pairs === 0 && warnCount === 0) ? "100%" : "遺遺꾩땐議?);
+  setText("seat4-stat-equity", equity_score ?? "—");
+  setText("seat4-stat-conflict", conflict_adjacent_pairs ?? "—");
+  setText("seat4-stat-cond", (conflict_adjacent_pairs === 0 && warnCount === 0) ? "100%" : "부분충족");
   setText("seat4-stat-swap", swapCnt);
 
   const notice = document.getElementById("seat4-notice");
   if (notice) {
-    const parts = ["??理쒖쥌 諛곗튂 ?뺤씤 ?꾨즺"];
-    if (swapCnt > 0) parts.push(`?섎룞 蹂寃?${swapCnt}嫄??ы븿`);
-    if (conflict_adjacent_pairs === 0) parts.push("媛덈벑 ?몄젒 0??);
-    notice.textContent = parts.join(" 쨌 ");
+    const parts = ["✓ 최종 배치 확인 완료"];
+    if (swapCnt > 0) parts.push(`수동 변경 ${swapCnt}건 포함`);
+    if (conflict_adjacent_pairs === 0) parts.push("갈등 인접 0쌍");
+    notice.textContent = parts.join(" · ");
   }
 
-  // 洹몃━?쒕뒗 renderSeatGrid媛 ?대? seat-area-4源뚯? 洹몃젮以?  renderSeatGrid(result);
+  // 그리드는 renderSeatGrid가 이미 seat-area-4까지 그려줌
+  renderSeatGrid(result);
 }
 
-// === ?먮━諛곗젙 1?④퀎(seat1) ?숈쟻 濡쒕뱶 ===
+// === 자리배정 1단계(seat1) 동적 로드 ===
 async function loadSeatConditionScreen() {
   if (!AppState.students || !AppState.students.length) {
     try { await loadStudents(); } catch (_) {}
   }
-  // 媛덈벑 ?섏뼱 ?뺣낫媛 swap ???щ텇瑜섏뿉 ?꾩슂?섎?濡?媛숈씠 蹂댁옣
+  // 갈등 페어 정보가 swap 후 재분류에 필요하므로 같이 보장
   if (!AppState.relations || !AppState.relations.length) {
     try { await loadRelations(); } catch (_) {}
   }
@@ -1381,9 +1402,9 @@ async function loadSeatConditionScreen() {
 function updateSeat1Stats() {
   const ss = AppState.students || [];
   const total = ss.length;
-  const vision = ss.filter(s => s.vision === "?쏀븿").length;
-  const special = ss.filter(s => s.special_needs && s.special_needs !== "?놁쓬" && s.special_needs !== "?쇰컲").length;
-  const attention = ss.filter(s => s.attention_level === "??쓬").length;
+  const vision = ss.filter(s => s.vision === "약함").length;
+  const special = ss.filter(s => s.special_needs && s.special_needs !== "없음" && s.special_needs !== "일반").length;
+  const attention = ss.filter(s => s.attention_level === "낮음").length;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set("seat1-stat-total", total);
   set("seat1-stat-vision", vision);
@@ -1391,32 +1412,32 @@ function updateSeat1Stats() {
   set("seat1-stat-attention", attention);
 }
 
-// ?숈깮 ?곗씠?곗뿉???덈?議곌굔???먮룞 ?꾩텧 (?ъ슜???섎룞 異붽?遺꾩? data-source="manual"濡?蹂댁〈)
+// 학생 데이터에서 절대조건을 자동 도출 (사용자 수동 추가분은 data-source="manual"로 보존)
 function renderSeat1AutoConditions() {
   const list = document.getElementById("seat-abs-list");
   if (!list) return;
-  // ?ъ슜???섎룞 異붽? ??ぉ留??대젮?먭린
+  // 사용자 수동 추가 항목만 살려두기
   const manual = Array.from(list.querySelectorAll('.cond-item[data-source="manual"]'));
   list.innerHTML = "";
 
   const ss = AppState.students || [];
   const auto = [];
-  ss.filter(s => s.vision === "?쏀븿").forEach(s =>
-    auto.push({ icon: "?몓", cls: "ci-blue", text: `${s.name} ???쒕젰 ?쏀븿 ???욎옄由?諛곗튂` })
+  ss.filter(s => s.vision === "약함").forEach(s =>
+    auto.push({ icon: "👁", cls: "ci-blue", text: `${s.name} — 시력 약함 → 앞자리 배치` })
   );
-  ss.filter(s => s.special_needs && s.special_needs !== "?놁쓬" && s.special_needs !== "?쇰컲").forEach(s =>
-    auto.push({ icon: "??, cls: "ci-warn", text: `${s.name} ??${s.special_needs} ??援먯궗 洹쇱쿂 諛곗튂` })
+  ss.filter(s => s.special_needs && s.special_needs !== "없음" && s.special_needs !== "일반").forEach(s =>
+    auto.push({ icon: "⚡", cls: "ci-warn", text: `${s.name} — ${s.special_needs} → 교사 근처 배치` })
   );
 
   if (!auto.length && !manual.length) {
-    list.innerHTML = '<div class="cond-empty" style="font-size:12px;color:#aaa;padding:8px 4px">?숈깮 ?곗씠?곗뿉???꾩텧???덈?議곌굔???놁뒿?덈떎. ?꾨옒?먯꽌 吏곸젒 異붽??섏꽭??</div>';
+    list.innerHTML = '<div class="cond-empty" style="font-size:12px;color:#aaa;padding:8px 4px">학생 데이터에서 도출된 절대조건이 없습니다. 아래에서 직접 추가하세요.</div>';
     return;
   }
   auto.forEach(c => {
     const el = document.createElement("div");
     el.className = "cond-item";
     el.dataset.source = "auto";
-    el.innerHTML = `<div class="cond-icon ${c.cls}">${c.icon}</div><div class="cond-text">${c.text}</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">??/button>`;
+    el.innerHTML = `<div class="cond-icon ${c.cls}">${c.icon}</div><div class="cond-text">${c.text}</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">✕</button>`;
     list.appendChild(el);
   });
   manual.forEach(el => list.appendChild(el));
@@ -1436,47 +1457,48 @@ function updateSeat1TotalSeats() {
   if (!rowsEl || !colsEl || !totalEl) return;
   const upd = () => { totalEl.textContent = (parseInt(rowsEl.value, 10) || 0) * (parseInt(colsEl.value, 10) || 0); };
   upd();
-  // 以묐났 諛붿씤??諛⑹?
+  // 중복 바인딩 방지
   if (!rowsEl.dataset.bound) { rowsEl.addEventListener("input", upd); rowsEl.dataset.bound = "1"; }
   if (!colsEl.dataset.bound) { colsEl.addEventListener("input", upd); colsEl.dataset.bound = "1"; }
 }
 
-// === ?먮━諛곗젙 ?붾㈃: 諛섎같?뺤쓽 loadStudents/updateStudentStats/renderStudentTable ?⑦꽩怨??숈씪 ===
+// === 자리배정 화면: 반배정의 loadStudents/updateStudentStats/renderStudentTable 패턴과 동일 ===
 async function loadSeatScreen(payload) {
-  // 0. ?숈깮 硫뷀?媛 ?꾩슂???ㅻⅨ ?⑤꼸???덉쓣 ???덉쑝????踰?蹂댁옣
+  // 0. 학생 메타가 필요한 다른 패널이 있을 수 있으니 한 번 보장
   if (!AppState.students || !AppState.students.length) {
     try { await loadStudents(); } catch (_) {}
   }
 
-  // 1. API ?몄텧 ??寃곌낵瑜?AppState?????  const result = await AssignmentAPI.generateSeat(payload);
+  // 1. API 호출 → 결과를 AppState에 저장
+  const result = await AssignmentAPI.generateSeat(payload);
   AppState.currentSeatResult = result;
   AppState.currentSeatId = result.seat_id;
 
-  // 2. ?듦퀎 移대뱶 + ?ъ씠???⑤꼸 媛깆떊
+  // 2. 통계 카드 + 사이드 패널 갱신
   updateSeatStats(result);
-  // 3. 醫뚯꽍 洹몃━???뚮뜑 (seat2 + seat3 ?숆린??
+  // 3. 좌석 그리드 렌더 (seat2 + seat3 동기화)
   renderSeatGrid(result);
 
-  showToast(`?먮━諛곗젙 ?꾨즺! 媛덈벑 ?몄젒 ?? ${result.conflict_adjacent_pairs}媛?);
+  showToast(`자리배정 완료! 갈등 인접 쌍: ${result.conflict_adjacent_pairs}개`);
   return result;
 }
 
 function updateSeatStats(result) {
   const { equity_score, conflict_adjacent_pairs, alerts = [], seat_grid = [], ai_advice } = result;
 
-  // --- ?곷떒 ?듦퀎 移대뱶 4醫?---
+  // --- 상단 통계 카드 4종 ---
   const warnCount = alerts.filter(a => a.type === "warn" || a.type === "danger").length;
   const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   setText("seat-stat-conflict", conflict_adjacent_pairs);
-  setText("seat-stat-equity", equity_score ?? "??);
+  setText("seat-stat-equity", equity_score ?? "—");
   setText("seat-stat-alert", warnCount);
-  setText("seat-stat-cond", conflict_adjacent_pairs === 0 && warnCount === 0 ? "100%" : "遺遺꾩땐議?);
+  setText("seat-stat-cond", conflict_adjacent_pairs === 0 && warnCount === 0 ? "100%" : "부분충족");
 
-  // --- AI 議곗뼵 ?명떚??---
+  // --- AI 조언 노티스 ---
   const advice = document.getElementById("seat-ai-advice");
-  if (advice && ai_advice) advice.textContent = "?뮕 " + ai_advice;
+  if (advice && ai_advice) advice.textContent = "💡 " + ai_advice;
 
-  // --- 異붽?怨좊젮?ы빆 ?댁꽍 寃곌낵 ---
+  // --- 추가고려사항 해석 결과 ---
   const extraPanel = document.getElementById("seat-extra-interpretations");
   if (extraPanel) {
     const items = result.extra_interpretations || [];
@@ -1486,16 +1508,16 @@ function updateSeatStats(result) {
     } else {
       extraPanel.style.display = "block";
       extraPanel.innerHTML =
-        '<div style="font-weight:600;margin-bottom:6px;color:#185FA5">?뱷 異붽?怨좊젮?ы빆???ㅼ쓬怨?媛숈씠 ?댁꽍?섏뿀?듬땲??/div>' +
-        items.map(m => `<div>??${m.replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]))}</div>`).join("");
+        '<div style="font-weight:600;margin-bottom:6px;color:#185FA5">📝 추가고려사항이 다음과 같이 해석되었습니다</div>' +
+        items.map(m => `<div>• ${m.replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]))}</div>`).join("");
     }
   }
 
-  // --- ?뚮┝ ?⑤꼸 (seat2 + seat3 ?숆린?? ---
+  // --- 알림 패널 (seat2 + seat3 동기화) ---
   const alertHtml = !alerts.length
-    ? '<div class="alert-item alert-info"><div class="alert-icon">i</div><div>?뱀씠?ы빆 ?놁쓬</div></div>'
+    ? '<div class="alert-item alert-info"><div class="alert-icon">i</div><div>특이사항 없음</div></div>'
     : (() => {
-        const map = { warn: ["alert-warn", "??], success: ["alert-success", "??], danger: ["alert-danger", "??], info: ["alert-info", "i"] };
+        const map = { warn: ["alert-warn", "⚠"], success: ["alert-success", "✓"], danger: ["alert-danger", "✕"], info: ["alert-info", "i"] };
         return alerts.map(a => {
           const [cls, icon] = map[a.type] || map.info;
           return `<div class="alert-item ${cls}"><div class="alert-icon">${icon}</div><div>${a.message}</div></div>`;
@@ -1506,7 +1528,7 @@ function updateSeatStats(result) {
     if (el) el.innerHTML = alertHtml;
   });
 
-  // --- ?뺥룊??諛?(equity_score瑜?湲곕컲?쇰줈 ?⑥닚 ?쒖떆) ---
+  // --- 형평성 바 (equity_score를 기반으로 단순 표시) ---
   const equityPanel = document.getElementById("seat-equity-panel");
   if (equityPanel) {
     const score = Number(equity_score) || 0;
@@ -1515,33 +1537,33 @@ function updateSeatStats(result) {
     const barColor = pct >= 80 ? "" : pct >= 60 ? "background:#BA7517" : "background:#A52828";
     equityPanel.innerHTML = `
       <div class="equity-bar-wrap">
-        <div class="equity-label"><span>?꾩껜 ?뺥룊??吏??/span><span style="color:${color};font-weight:600">${pct}%</span></div>
+        <div class="equity-label"><span>전체 형평성 지수</span><span style="color:${color};font-weight:600">${pct}%</span></div>
         <div class="equity-bar"><div class="equity-fill" style="width:${pct}%;${barColor}"></div></div>
       </div>
-      <div style="font-size:11px;color:#888;margin-top:8px;line-height:1.5">?댁쟾 諛곗젙 ?대젰??諛섏쁺???곗텧???먯닔?낅땲??</div>
+      <div style="font-size:11px;color:#888;margin-top:8px;line-height:1.5">이전 배정 이력을 반영해 산출된 점수입니다.</div>
     `;
   }
 
-  // --- 醫뚯꽍 遺꾪룷 (seat_grid ???gender/grade/special???ㅼ뼱?덉쓬) ---
+  // --- 좌석 분포 (seat_grid 셀에 gender/grade/special이 들어있음) ---
   const distPanel = document.getElementById("seat-distribution-panel");
   if (distPanel) {
     const occ = seat_grid.flat().filter(s => s.name);
     const count = (pred) => occ.filter(pred).length;
-    const male = count(s => s.gender === "?? || s.gender === "M");
-    const female = count(s => s.gender === "?? || s.gender === "F");
-    const top = count(s => s.grade === "??);
-    const mid = count(s => s.grade === "以?);
-    const low = count(s => s.grade === "??);
-    const sp  = count(s => s.special_needs && s.special_needs !== "?놁쓬" && s.special_needs !== "?쇰컲");
+    const male = count(s => s.gender === "남" || s.gender === "M");
+    const female = count(s => s.gender === "여" || s.gender === "F");
+    const top = count(s => s.grade === "상");
+    const mid = count(s => s.grade === "중");
+    const low = count(s => s.grade === "하");
+    const sp  = count(s => s.special_needs && s.special_needs !== "없음" && s.special_needs !== "일반");
     const row = (label, val, color = "#1a1a18") =>
       `<div style="display:flex;justify-content:space-between"><span>${label}</span><span style="color:${color};font-weight:500">${val}</span></div>`;
     distPanel.innerHTML = [
-      row("珥앹썝", `${occ.length}紐?),
-      row("?깅퀎", `??${male} / ??${female}`),
-      row("?깆쟻 ??, `${top}紐?),
-      row("?깆쟻 以?, `${mid}紐?),
-      row("?깆쟻 ??, `${low}紐?),
-      row("?뱀닔援먯쑁", `${sp}紐?, "#534AB7"),
+      row("총원", `${occ.length}명`),
+      row("성별", `남 ${male} / 여 ${female}`),
+      row("성적 상", `${top}명`),
+      row("성적 중", `${mid}명`),
+      row("성적 하", `${low}명`),
+      row("특수교육", `${sp}명`, "#534AB7"),
     ].join("");
   }
 }
@@ -1550,15 +1572,15 @@ function renderSeatGrid(result) {
   const { seat_grid } = result;
   if (!seat_grid) return;
 
-  // ? 遺꾨쪟 ?ы띁 ???꾩씠肄섏? ?뱀닔援먯쑁 ??留??ъ슜
-  // ?쒕젰諛곕젮: ?뚮? 諛곌꼍 (?꾩씠肄??놁쓬)
-  // ?뱀닔援먯쑁: ???꾩씠肄?(諛곌꼍? ?쒕젰諛곕젮 ?숈떆???뚮쭔 ?뚮옉)
-  // 媛덈벑二쇱쓽: 鍮④컙 ?뚮몢由?(?꾩씠肄??놁쓬)
+  // 셀 분류 헬퍼 — 아이콘은 특수교육 ⚡ 만 사용
+  // 시력배려: 파란 배경 (아이콘 없음)
+  // 특수교육: ⚡ 아이콘 (배경은 시력배려 동시일 때만 파랑)
+  // 갈등주의: 빨간 테두리 (아이콘 없음)
   const classifyCell = (seat) => {
     const flags = seat.flags || [];
-    const isVision = flags.includes("?쒕젰諛곕젮") || seat.special === "?쒕젰諛곕젮";
-    const isSpecial = flags.includes("?뱀닔援먯쑁") || seat.special === "ADHD";
-    const isConflict = flags.includes("媛덈벑二쇱쓽");
+    const isVision = flags.includes("시력배려") || seat.special === "시력배려";
+    const isSpecial = flags.includes("특수교육") || seat.special === "ADHD";
+    const isConflict = flags.includes("갈등주의");
 
     const classList = [];
     if (isVision) classList.push("vision");
@@ -1566,26 +1588,27 @@ function renderSeatGrid(result) {
     if (isConflict) classList.push("has-conflict");
 
     const iconHtml = isSpecial
-      ? '<div class="seat-icons"><span>??/span></div>'
+      ? '<div class="seat-icons"><span>⚡</span></div>'
       : "";
 
-    // ?쒓렇 ?띿뒪???곗꽑?쒖쐞: 媛덈벑二쇱쓽 > ?뱀닔援먯쑁紐?> ?쒕젰諛곕젮 > 湲곕낯
+    // 태그 텍스트 우선순위: 갈등주의 > 특수교육명 > 시력배려 > 기본
     let tag = null;
-    if (isConflict) tag = "媛덈벑二쇱쓽";
-    else if (isSpecial) tag = seat.special_needs || "?뱀닔援먯쑁";
-    else if (isVision) tag = "?쒕젰諛곕젮";
+    if (isConflict) tag = "갈등주의";
+    else if (isSpecial) tag = seat.special_needs || "특수교육";
+    else if (isVision) tag = "시력배려";
 
     return { cls: classList.join(" "), icon: iconHtml, tag };
   };
 
-  // ?먮━ 洹몃━???뚮뜑留?  const area = document.getElementById("seat-grid-area");
+  // 자리 그리드 렌더링
+  const area = document.getElementById("seat-grid-area");
   if (area && seat_grid) {
     area.innerHTML = seat_grid.map(row => {
       const seatsHtml = row.map((seat, colIdx) => {
         const aisle = "";
 
         if (!seat.name) {
-          return `${aisle}<div class="seat" style="opacity:.3"><div class="seat-num">${seat.seat_num}</div><div class="seat-name">鍮덉옄由?/div></div>`;
+          return `${aisle}<div class="seat" style="opacity:.3"><div class="seat-num">${seat.seat_num}</div><div class="seat-name">빈자리</div></div>`;
         }
 
         const k = classifyCell(seat);
@@ -1602,15 +1625,16 @@ function renderSeatGrid(result) {
     }).join("");
   }
 
-  // ?뚮┝ ?⑤꼸? updateSeatStats媛 泥섎━
+  // 알림 패널은 updateSeatStats가 처리
 
-  // seat3(?섎룞 議곗젙) 洹몃━?쒕룄 ?숆린??  const area3 = document.getElementById("seat-area-3");
+  // seat3(수동 조정) 그리드도 동기화
+  const area3 = document.getElementById("seat-area-3");
   if (area3 && seat_grid) {
     area3.innerHTML = seat_grid.map(row => {
       const seatsHtml = row.map((seat, colIdx) => {
         const aisle = "";
         if (!seat.name) {
-          return `${aisle}<div class="seat" style="opacity:.3"><div class="seat-num">${seat.seat_num}</div><div class="seat-name">鍮덉옄由?/div></div>`;
+          return `${aisle}<div class="seat" style="opacity:.3"><div class="seat-num">${seat.seat_num}</div><div class="seat-name">빈자리</div></div>`;
         }
         const k = classifyCell(seat);
         const tagText = k.tag || seat.tag;
@@ -1625,14 +1649,14 @@ function renderSeatGrid(result) {
     }).join("");
   }
 
-  // seat4(理쒖쥌 ?뺤젙) 洹몃━?????쎄린 ?꾩슜 (onclick ?놁쓬)
+  // seat4(최종 확정) 그리드 — 읽기 전용 (onclick 없음)
   const area4 = document.getElementById("seat-area-4");
   if (area4 && seat_grid) {
     area4.innerHTML = seat_grid.map(row => {
       const seatsHtml = row.map((seat, colIdx) => {
         const aisle = "";
         if (!seat.name) {
-          return `${aisle}<div class="seat" style="opacity:.3"><div class="seat-num">${seat.seat_num}</div><div class="seat-name">鍮덉옄由?/div></div>`;
+          return `${aisle}<div class="seat" style="opacity:.3"><div class="seat-num">${seat.seat_num}</div><div class="seat-name">빈자리</div></div>`;
         }
         const k = classifyCell(seat);
         const tagText = k.tag || seat.tag;
@@ -1648,23 +1672,23 @@ function renderSeatGrid(result) {
   }
 }
 
-// ?섎룞 swap ??AppState.currentSeatResult.seat_grid?먯꽌 ??????숈깮 硫뷀?瑜?援먰솚
-// ?숈깮 ?대쫫?쇰줈 flags瑜??ш퀎??(AppState.students + relations 湲곕컲)
+// 수동 swap 시 AppState.currentSeatResult.seat_grid에서 두 셀의 학생 메타를 교환
+// 학생 이름으로 flags를 재계산 (AppState.students + relations 기반)
 function _computeFlagsForStudent(name) {
   const flags = [];
   if (!name) return flags;
   const student = (AppState.students || []).find(s => s.name === name);
   if (student) {
-    if (student.vision === "?쏀븿") flags.push("?쒕젰諛곕젮");
-    if (student.special_needs && student.special_needs !== "?놁쓬" && student.special_needs !== "?쇰컲") {
-      flags.push("?뱀닔援먯쑁");
+    if (student.vision === "약함") flags.push("시력배려");
+    if (student.special_needs && student.special_needs !== "없음" && student.special_needs !== "일반") {
+      flags.push("특수교육");
     }
   }
-  // 媛덈벑 ?섏뼱 ?깆옣 ?щ? ??移쒗븿? ?쒖쇅
+  // 갈등 페어 등장 여부 — 친함은 제외
   const inConflict = (AppState.relations || []).some(r =>
-    r.type === "媛덈벑" && (r.student_a === name || r.student_b === name)
+    r.type === "갈등" && (r.student_a === name || r.student_b === name)
   );
-  if (inConflict) flags.push("媛덈벑二쇱쓽");
+  if (inConflict) flags.push("갈등주의");
   return flags;
 }
 
@@ -1677,19 +1701,19 @@ function syncSeatSwapToState(seatNum1, seatNum2) {
     if (cell.seat_num === seatNum2) cell2 = cell;
   }));
   if (!cell1 || !cell2) return;
-  // ?숈깮 硫뷀? 援먰솚 (name + 遺???뺣낫 ?꾨?)
+  // 학생 메타 교환 (name + 부수 정보 전부)
   const fields = ["name", "gender", "grade", "special", "special_needs", "tag"];
   fields.forEach(f => {
     const tmp = cell1[f];
     cell1[f] = cell2[f];
     cell2[f] = tmp;
   });
-  // flags??援먰솚???꾨땲?????대쫫 湲곗??쇰줈 ?ш퀎?고빐????(?쒕젰諛곕젮/媛덈벑二쇱쓽 ?깆? ?숈깮 ?띿꽦)
+  // flags는 교환이 아니라 새 이름 기준으로 재계산해야 함 (시력배려/갈등주의 등은 학생 속성)
   cell1.flags = _computeFlagsForStudent(cell1.name);
   cell2.flags = _computeFlagsForStudent(cell2.name);
 }
 
-// 諛깆뿏?쒖뿉 ?ы룊媛 ?붿껌 ??seat2 ?듦퀎/?뚮┝/?뺥룊??遺꾪룷 媛깆떊
+// 백엔드에 재평가 요청 → seat2 통계/알림/형평성/분포 갱신
 async function reevaluateSeatGrid() {
   const result = AppState.currentSeatResult;
   if (!result || !result.seat_grid) return;
@@ -1698,14 +1722,14 @@ async function reevaluateSeatGrid() {
     result.conflict_adjacent_pairs = evalResult.conflict_adjacent_pairs;
     result.equity_score = evalResult.equity_score;
     result.alerts = evalResult.alerts;
-    // 諛깆뿏?쒓? ??grid??flags(媛덈벑二쇱쓽 ??瑜??ㅼ떆 諛뺤븘 ?뚮젮以???洹몃?濡?援먯껜
+    // 백엔드가 새 grid에 flags(갈등주의 등)를 다시 박아 돌려줌 — 그대로 교체
     if (evalResult.seat_grid) {
       result.seat_grid = evalResult.seat_grid;
     }
     updateSeatStats(result);
     renderSeatGrid(result);
   } catch (e) {
-    console.warn("?먮━ ?ы룊媛 ?ㅽ뙣:", e.message);
+    console.warn("자리 재평가 실패:", e.message);
   }
 }
 
@@ -1715,27 +1739,28 @@ async function confirmSeatAndGenerateDocs() {
       try { await reevaluateSeatGrid(); } catch (_) {}
     }
     if (!AppState.currentSeatResult) {
-      throw new Error("?먮━諛곗젙 寃곌낵媛 ?놁뒿?덈떎. 癒쇱? ?먮룞 諛곗튂瑜??ㅽ뻾?섏꽭??");
+      throw new Error("자리배정 결과가 없습니다. 먼저 자동 배치를 실행하세요.");
     }
 
-    // 利됱떆 seat5濡??대룞
+    // 즉시 seat5로 이동
     goScreen("seat5");
 
-    // ??0(寃곌낵??, ??2(?뺥룊??留?LLM ?앹꽦. ??1? ?숈깮蹂?寃??UI?쇱꽌 嫄대뱶由ъ? ?딆쓬
+    // 탭 0(결과표), 탭 2(형평성)만 LLM 생성. 탭 1은 학생별 검색 UI라서 건드리지 않음
     const slots = [
-      { tabIdx: 0, label: "?먮━諛곗젙 寃곌낵??, docType: "teacher" },
-      { tabIdx: 2, label: "?뺥룊??由ы룷??,   docType: "parent_response" },
+      { tabIdx: 0, label: "자리배정 결과표", docType: "teacher" },
+      { tabIdx: 2, label: "형평성 리포트",   docType: "parent_response" },
     ];
     slots.forEach(({ tabIdx, label }) => {
       const el = document.getElementById(`seat-ddoc-${tabIdx}`);
       if (el) {
-        el.innerHTML = `<div class="doc-paper" style="color:#888;font-size:13px;text-align:center;padding:30px"><div style="margin-bottom:8px">??${label} ?앹꽦 以?..</div><div style="font-size:11px">AI媛 臾몄꽌瑜??묒꽦?섍퀬 ?덉뒿?덈떎</div></div>`;
+        el.innerHTML = `<div class="doc-paper" style="color:#888;font-size:13px;text-align:center;padding:30px"><div style="margin-bottom:8px">⏳ ${label} 생성 중...</div><div style="font-size:11px">AI가 문서를 작성하고 있습니다</div></div>`;
       }
     });
     AppState.currentSeatDocs = { 0: null, 2: null };
-    showToast("臾몄꽌瑜??앹꽦?섍퀬 ?덉뒿?덈떎...");
+    showToast("문서를 생성하고 있습니다...");
 
-    // seat5 ?숈깮 寃??datalist 梨꾩슦湲?    const dl = document.getElementById("seat5-student-names");
+    // seat5 학생 검색 datalist 채우기
+    const dl = document.getElementById("seat5-student-names");
     if (dl) {
       const names = (AppState.students || []).map(s => s.name);
       dl.innerHTML = names.map(n => `<option value="${n}"></option>`).join("");
@@ -1753,36 +1778,36 @@ async function confirmSeatAndGenerateDocs() {
     const promises = slots.map(({ tabIdx, docType }) =>
       DocumentAPI.generateSeat(AppState.currentSeatResult, docType, AppState.currentSeatId)
         .then(d => fillTab(tabIdx, d))
-        .catch(e => fillTab(tabIdx, { document: `[臾몄꽌 ?앹꽦 ?ㅽ뙣: ${e.message}]`, type: docType }))
+        .catch(e => fillTab(tabIdx, { document: `[문서 생성 실패: ${e.message}]`, type: docType }))
     );
     await Promise.all(promises);
-    showToast("?먮━諛곗젙 ?뺤젙 諛?臾몄꽌 ?앹꽦 ?꾨즺!");
+    showToast("자리배정 확정 및 문서 생성 완료!");
   } catch (e) {
     showError(e.message);
   }
 }
 
-// === seat5 ?숈깮蹂??먮━ 諛곗젙 ?댁쑀 寃??===
+// === seat5 학생별 자리 배정 이유 검색 ===
 async function searchSeatStudentReason() {
   const input = document.getElementById("seat5-search-input");
   const resultEl = document.getElementById("seat5-search-result");
   if (!input || !resultEl) return;
   const name = input.value.trim();
-  if (!name) { showError("?숈깮 ?대쫫???낅젰?섏꽭??); return; }
-  if (!AppState.currentSeatResult) { showError("?먮━諛곗젙 寃곌낵媛 ?놁뒿?덈떎"); return; }
+  if (!name) { showError("학생 이름을 입력하세요"); return; }
+  if (!AppState.currentSeatResult) { showError("자리배정 결과가 없습니다"); return; }
 
   resultEl.style.display = "block";
-  resultEl.textContent = "?쨼 AI媛 諛곗젙 ?댁쑀瑜?遺꾩꽍 以묒엯?덈떎...";
+  resultEl.textContent = "🤖 AI가 배정 이유를 분석 중입니다...";
   try {
     const data = await AssignmentAPI.explainSeatForStudent(AppState.currentSeatResult, name);
     resultEl.innerHTML = `<div style="font-weight:600;margin-bottom:6px">${data.student_name}</div><div>${(data.reason || "").replace(/\n/g, "<br>")}</div>`;
   } catch (e) {
-    resultEl.textContent = "寃???ㅽ뙣: " + e.message;
+    resultEl.textContent = "검색 실패: " + e.message;
   }
 }
 
-// === ?먮━諛곗젙 臾몄꽌 ?ㅼ슫濡쒕뱶/蹂듭궗 ===
-const SEAT_DOC_LABELS = { 0: "?먮━諛곗젙_寃곌낵??, 2: "?뺥룊??由ы룷?? };
+// === 자리배정 문서 다운로드/복사 ===
+const SEAT_DOC_LABELS = { 0: "자리배정_결과표", 2: "형평성_리포트" };
 
 function _activeSeatDocIndex() {
   const tabs = document.querySelectorAll("#seat5 .doc-tab");
@@ -1801,46 +1826,47 @@ function _saveTextFile(filename, text) {
 
 function downloadActiveSeatDoc() {
   const docs = AppState.currentSeatDocs;
-  if (!docs) { showError("癒쇱? 臾몄꽌瑜??앹꽦?섏꽭??"); return; }
+  if (!docs) { showError("먼저 문서를 생성하세요."); return; }
   const i = _activeSeatDocIndex();
-  if (!(i in SEAT_DOC_LABELS)) { showError("????? ?ㅼ슫濡쒕뱶 ??곸씠 ?꾨떃?덈떎."); return; }
+  if (!(i in SEAT_DOC_LABELS)) { showError("이 탭은 다운로드 대상이 아닙니다."); return; }
   const text = docs[i]?.document || "";
-  if (!text) { showError("??ν븷 臾몄꽌 ?댁슜???놁뒿?덈떎."); return; }
+  if (!text) { showError("저장할 문서 내용이 없습니다."); return; }
   _saveTextFile(`${SEAT_DOC_LABELS[i]}.txt`, text);
-  showToast(`${SEAT_DOC_LABELS[i]} ????꾨즺`);
+  showToast(`${SEAT_DOC_LABELS[i]} 저장 완료`);
 }
 
 async function copyActiveSeatDoc() {
   const docs = AppState.currentSeatDocs;
-  if (!docs) { showError("癒쇱? 臾몄꽌瑜??앹꽦?섏꽭??"); return; }
+  if (!docs) { showError("먼저 문서를 생성하세요."); return; }
   const i = _activeSeatDocIndex();
-  if (!(i in SEAT_DOC_LABELS)) { showError("????? 蹂듭궗 ??곸씠 ?꾨떃?덈떎."); return; }
+  if (!(i in SEAT_DOC_LABELS)) { showError("이 탭은 복사 대상이 아닙니다."); return; }
   const text = docs[i]?.document || "";
   try {
     await navigator.clipboard.writeText(text);
-    showToast(`${SEAT_DOC_LABELS[i]} 蹂듭궗 ?꾨즺`);
+    showToast(`${SEAT_DOC_LABELS[i]} 복사 완료`);
   } catch (e) {
-    showError("?대┰蹂대뱶 蹂듭궗 ?ㅽ뙣: " + e.message);
+    showError("클립보드 복사 실패: " + e.message);
   }
 }
 
 function downloadAllSeatDocs() {
   const docs = AppState.currentSeatDocs;
-  if (!docs) { showError("癒쇱? 臾몄꽌瑜??앹꽦?섏꽭??"); return; }
+  if (!docs) { showError("먼저 문서를 생성하세요."); return; }
   const sep = "\n\n" + "=".repeat(60) + "\n\n";
   const merged = Object.keys(SEAT_DOC_LABELS)
     .map(i => `# ${SEAT_DOC_LABELS[i]}\n\n${docs[i]?.document || ""}`)
     .join(sep);
-  _saveTextFile("?먮━諛곗젙_?꾩껜臾몄꽌.txt", merged);
-  showToast("?꾩껜 臾몄꽌 ????꾨즺");
+  _saveTextFile("자리배정_전체문서.txt", merged);
+  showToast("전체 문서 저장 완료");
 }
 
-// === 諛섎같??由ы룷???ㅼ슫濡쒕뱶/蹂듭궗 (DOM ?띿뒪??異붿텧 諛⑹떇) ===
+// === 반배정 리포트 다운로드/복사 (DOM 텍스트 추출 방식) ===
 function _extractClassReportText() {
   const report = document.getElementById("ban5-report");
   const reasons = document.getElementById("ban5-reasons");
   if (!report) return "";
-  // doc-row ?ㅼ쓣 "?? 媛? 以꾨줈 蹂??  const reportLines = ["# 諛섎같??寃곌낵 蹂닿퀬??, ""];
+  // doc-row 들을 "키: 값" 줄로 변환
+  const reportLines = ["# 반배정 결과 보고서", ""];
   report.querySelectorAll(".doc-paper-title").forEach(t => {
     reportLines[0] = "# " + t.textContent.trim();
   });
@@ -1852,8 +1878,8 @@ function _extractClassReportText() {
   let out = reportLines.join("\n");
   if (reasons) {
     const reasonText = reasons.innerText.trim();
-    if (reasonText && !/AI 遺꾩꽍 ?ㅽ뻾 ??.test(reasonText)) {
-      out += "\n\n## AI 諛곗튂 洹쇨굅\n\n" + reasonText;
+    if (reasonText && !/AI 분석 실행 후/.test(reasonText)) {
+      out += "\n\n## AI 배치 근거\n\n" + reasonText;
     }
   }
   return out;
@@ -1861,27 +1887,27 @@ function _extractClassReportText() {
 
 function downloadClassReport() {
   const text = _extractClassReportText();
-  if (!text) { showError("??ν븷 由ы룷?멸? ?놁뒿?덈떎."); return; }
-  _saveTextFile("諛섎같??由ы룷??txt", text);
-  showToast("由ы룷??????꾨즺");
+  if (!text) { showError("저장할 리포트가 없습니다."); return; }
+  _saveTextFile("반배정_리포트.txt", text);
+  showToast("리포트 저장 완료");
 }
 
 async function copyClassReport() {
   const text = _extractClassReportText();
-  if (!text) { showError("蹂듭궗??由ы룷?멸? ?놁뒿?덈떎."); return; }
+  if (!text) { showError("복사할 리포트가 없습니다."); return; }
   try {
     await navigator.clipboard.writeText(text);
-    showToast("由ы룷??蹂듭궗 ?꾨즺");
+    showToast("리포트 복사 완료");
   } catch (e) {
-    showError("?대┰蹂대뱶 蹂듭궗 ?ㅽ뙣: " + e.message);
+    showError("클립보드 복사 실패: " + e.message);
   }
 }
 
 // =============================================
-// 珥덇린???????쒖옉 ???ㅽ뻾
+// 초기화 — 앱 시작 시 실행
 // =============================================
 
-// 援먯궗?뚭껄 ?뚯떛 ?꾨즺 ?대쭅
+// 교사소견 파싱 완료 폴링
 function setAnalysisBtnEnabled(enabled) {
   const btn = document.getElementById('btn-run-analysis');
   if (!btn) return;
@@ -1889,17 +1915,17 @@ function setAnalysisBtnEnabled(enabled) {
     btn.disabled = false;
     btn.style.opacity = '1';
     btn.style.cursor = 'pointer';
-    btn.textContent = 'AI 遺꾩꽍 ?ㅽ뻾 ??;
+    btn.textContent = 'AI 분석 실행 →';
   } else {
     btn.disabled = true;
     btn.style.opacity = '0.5';
     btn.style.cursor = 'not-allowed';
-    btn.textContent = '援먯궗?뚭껄 遺꾩꽍 以?.. (?좎떆 湲곕떎?ㅼ＜?몄슂)';
+    btn.textContent = '교사소견 분석 중... (잠시 기다려주세요)';
   }
 }
 
 async function pollNotesStatus() {
-  // 踰꾪듉 鍮꾪솢?깊솕
+  // 버튼 비활성화
   setAnalysisBtnEnabled(false);
 
   const maxWait = 120;
@@ -1912,16 +1938,16 @@ async function pollNotesStatus() {
       if (data.done) {
         clearInterval(interval);
         setAnalysisBtnEnabled(true);
-        showToast(`??援먯궗?뚭껄 遺꾩꽍 ?꾨즺! ?댁젣 AI 遺꾩꽍???ㅽ뻾?섏꽭??`, 'success');
+        showToast(`✅ 교사소견 분석 완료! 이제 AI 분석을 실행하세요.`, 'success');
         const notice = document.getElementById('notes-done-notice');
         if (notice) {
           notice.style.display = 'block';
-          notice.textContent = `??援먯궗?뚭껄 AI 遺꾩꽍 ?꾨즺 ??由щ뜑???숈깮???먮룞?쇰줈 諛섏쁺?⑸땲??;
+          notice.textContent = `✅ 교사소견 AI 분석 완료 — 리더십 학생이 자동으로 반영됩니다`;
         }
       } else if (elapsed >= maxWait) {
         clearInterval(interval);
-        setAnalysisBtnEnabled(true); // ??꾩븘????洹몃깷 ?덉슜
-        showToast('?뚭껄 遺꾩꽍 ?쒓컙 珥덇낵 ??AI 遺꾩꽍???ㅽ뻾?⑸땲??, 'warn');
+        setAnalysisBtnEnabled(true); // 타임아웃 시 그냥 허용
+        showToast('소견 분석 시간 초과 — AI 분석을 실행합니다', 'warn');
       }
     } catch(e) {
       clearInterval(interval);
@@ -1931,16 +1957,17 @@ async function pollNotesStatus() {
 }
 
 async function resetAllData() {
-  if (!confirm('?숈깮 ?곗씠?곗? 愿怨??곗씠?곕? 紐⑤몢 ??젣?좉퉴??')) return;
+  if (!confirm('학생 데이터와 관계 데이터를 모두 삭제할까요?')) return;
   try {
-    showLoading('?곗씠??珥덇린??以?..');
+    showLoading('데이터 초기화 중...');
     await fetch(`${BASE_URL}/students`, { method: 'DELETE' });
     await fetch(`${BASE_URL}/relations`, { method: 'DELETE' });
     AppState.students = [];
     AppState.relations = [];
     AppState.conditions.absolute = [];
     AppState._relationsAutoApplied = false;
-    // UI 珥덇린??    const tbody = document.getElementById('ban-tbody');
+    // UI 초기화
+    const tbody = document.getElementById('ban-tbody');
     if (tbody) tbody.innerHTML = '';
     const absList = document.getElementById('ban-abs-list');
     if (absList) absList.innerHTML = '';
@@ -1950,56 +1977,59 @@ async function resetAllData() {
     if (conflictEl) conflictEl.textContent = '0';
     document.getElementById('ban-upload-result').textContent = '';
 
-    // ?먮━諛곗젙 1?④퀎 ?붾㈃??媛숈씠 珥덇린??    if (typeof updateSeat1Stats === 'function') updateSeat1Stats();
+    // 자리배정 1단계 화면도 같이 초기화
+    if (typeof updateSeat1Stats === 'function') updateSeat1Stats();
     if (typeof renderSeat1AutoConditions === 'function') renderSeat1AutoConditions();
     if (typeof renderSeat1StudentDatalist === 'function') renderSeat1StudentDatalist();
     const seatUploadResult = document.getElementById('seat-upload-result');
     if (seatUploadResult) seatUploadResult.textContent = '';
 
-    showToast('?곗씠??珥덇린???꾨즺! ?묒? ?뚯씪???낅줈?쒗빐二쇱꽭??', 'success');
+    showToast('데이터 초기화 완료! 엑셀 파일을 업로드해주세요.', 'success');
   } catch(e) {
-    showToast('珥덇린???ㅽ뙣: ' + e.message, 'error');
+    showToast('초기화 실패: ' + e.message, 'error');
   } finally {
     hideLoading();
   }
 }
 
 async function initApp() {
-  console.log("Class Twin AI 珥덇린??..");
+  console.log("Class Twin AI 초기화...");
   try {
-    // ?쒖꽌?濡?濡쒕뱶: ?숈깮 癒쇱?, 愿怨??ㅼ쓬, 洹??ㅼ쓬 ?덈?議곌굔 ?곸슜
+    // 순서대로 로드: 학생 먼저, 관계 다음, 그 다음 절대조건 적용
     await loadStudents();
     await loadRelations();
-    // DB???숈깮/愿怨??곗씠???덉쑝硫??덈? 議곌굔 ?먮룞 ?곸슜
+    // DB에 학생/관계 데이터 있으면 절대 조건 자동 적용
     if (AppState.students.length > 0 || AppState.relations.length > 0) {
       updateAbsConditions(AppState.students, 'ban');
     }
-    console.log("珥덇린???꾨즺");
+    console.log("초기화 완료");
   } catch (e) {
-    console.error("珥덇린???ㅽ뙣:", e);
-    showToast("?쒕쾭 ?곌껐 ?ㅽ뙣. ?ㅽ봽?쇱씤 紐⑤뱶濡??ㅽ뻾?⑸땲??", "warn");
+    console.error("초기화 실패:", e);
+    showToast("서버 연결 실패. 오프라인 모드로 실행합니다.", "warn");
   }
 }
 
-// ?섏씠吏 濡쒕뱶 ??珥덇린??document.addEventListener("DOMContentLoaded", initApp);
+// 페이지 로드 시 초기화
+document.addEventListener("DOMContentLoaded", initApp);
 
 // =============================================
-// Excel/CSV ?낅줈??湲곕뒫
+// Excel/CSV 업로드 기능
 // =============================================
 
 async function uploadExcelFile(file, type = 'students') {
   const formData = new FormData();
   formData.append('file', file);
 
-  showLoading('湲곗〈 ?곗씠??珥덇린??以?..');
+  showLoading('기존 데이터 초기화 중...');
   try {
-    // ?낅줈????湲곗〈 ?숈깮 + 愿怨??곗씠??珥덇린??    await fetch(`${BASE_URL}/students`, { method: 'DELETE' });
+    // 업로드 전 기존 학생 + 관계 데이터 초기화
+    await fetch(`${BASE_URL}/students`, { method: 'DELETE' });
     await fetch(`${BASE_URL}/relations`, { method: 'DELETE' });
   } catch(e) {
-    // 珥덇린???ㅽ뙣?대룄 ?낅줈?쒕뒗 ?쒕룄
+    // 초기화 실패해도 업로드는 시도
   }
 
-  showLoading(type === 'students' ? '?숈깮 ?곗씠???낅줈??以?..' : '愿怨??곗씠???낅줈??以?..');
+  showLoading(type === 'students' ? '학생 데이터 업로드 중...' : '관계 데이터 업로드 중...');
   try {
     const res = await fetch(`${BASE_URL}/students/upload`, {
       method: 'POST',
@@ -2010,14 +2040,14 @@ async function uploadExcelFile(file, type = 'students') {
     AppState.students = data.students;
     renderStudentTable(data.students);
     updateStudentStats(data.students);
-    // ??踰덉㎏ ?쒗듃濡??ㅼ뼱??愿怨??곗씠?곕? AppState???숆린??(?섎룞 swap ??媛덈벑 遺꾨쪟???꾩슂)
+    // 두 번째 시트로 들어온 관계 데이터를 AppState에 동기화 (수동 swap 시 갈등 분류에 필요)
     try { await loadRelations(); } catch (_) {}
-    // ?먮━諛곗젙 1?④퀎 ?붾㈃?????덉쑝硫?洹몄そ??媛깆떊
+    // 자리배정 1단계 화면이 떠 있으면 그쪽도 갱신
     if (typeof updateSeat1Stats === 'function') updateSeat1Stats();
     if (typeof renderSeat1AutoConditions === 'function') renderSeat1AutoConditions();
     if (typeof renderSeat1StudentDatalist === 'function') renderSeat1StudentDatalist();
     const relCount = data.relations_added || 0;
-    showToast(`${data.count}紐??낅줈???꾨즺${relCount ? ` (愿怨?${relCount}嫄?` : ''}`);
+    showToast(`${data.count}명 업로드 완료${relCount ? ` (관계 ${relCount}건)` : ''}`);
     return data;
   } catch(e) {
     showError(e.message);
@@ -2026,24 +2056,25 @@ async function uploadExcelFile(file, type = 'students') {
   }
 }
 
-// 愿怨??곗씠???뚯씪 ?낅줈??async function uploadRelationsFile(file) {
+// 관계 데이터 파일 업로드
+async function uploadRelationsFile(file) {
   const formData = new FormData();
   formData.append('file', file);
   const res = await fetch(`${BASE_URL}/relations/upload`, {
     method: 'POST',
     body: formData
   });
-  if (!res.ok) throw new Error('愿怨??곗씠???낅줈???ㅽ뙣');
+  if (!res.ok) throw new Error('관계 데이터 업로드 실패');
   return await res.json();
 }
 
-// ?ш컖???믪쓬 愿怨꾨? ?덈? 議곌굔???먮룞 異붽?
+// 심각도 높음 관계를 절대 조건에 자동 추가
 function applyAutoConditions(autoConditions) {
   const list = document.getElementById('ban-abs-list');
   if (!list) return;
 
   autoConditions.forEach(cond => {
-    // ?대? 媛숈? 議곌굔 ?덉쑝硫?以묐났 異붽? ????(student_a + student_b + type 紐⑤몢 ?쇱튂???뚮쭔 以묐났)
+    // 이미 같은 조건 있으면 중복 추가 안 함 (student_a + student_b + type 모두 일치할 때만 중복)
     const existingItems = list.querySelectorAll('.cond-item .cond-text');
     const isDuplicate = Array.from(existingItems).some(el => {
       const text = el.textContent;
@@ -2051,23 +2082,23 @@ function applyAutoConditions(autoConditions) {
     });
     if (isDuplicate) return;
 
-    const iconMap = {'遺꾨━': '??, '媛숈? 諛?: '+'};
-    const clsMap  = {'遺꾨━': 'ci-red', '媛숈? 諛?: 'ci-green'};
-    const badgeMap= {'遺꾨━': 'br', '媛숈? 諛?: 'bg2'};
+    const iconMap = {'분리': '✕', '같은 반': '+'};
+    const clsMap  = {'분리': 'ci-red', '같은 반': 'ci-green'};
+    const badgeMap= {'분리': 'br', '같은 반': 'bg2'};
     const type    = cond.type;
-    const label   = cond.relation_type === '媛덈벑'
-      ? `${cond.student_a} ??${cond.student_b} (媛덈벑쨌?ш컖???믪쓬)`
-      : `${cond.student_a} ??${cond.student_b} (移쒗븿쨌?ш컖???믪쓬)`;
+    const label   = cond.relation_type === '갈등'
+      ? `${cond.student_a} ↔ ${cond.student_b} (갈등·심각도 높음)`
+      : `${cond.student_a} ↔ ${cond.student_b} (친함·심각도 높음)`;
 
     const el = document.createElement('div');
     el.className = 'cond-item';
     el.innerHTML = `
       <div class="cond-icon ${clsMap[type]}">${iconMap[type]}</div>
-      <div class="cond-text">${label} <span class="badge ${badgeMap[type]}">${type}</span> <span class="badge bb">?먮룞</span></div>
-      <button class="del-btn" onclick="this.closest('.cond-item').remove();updateSummary()">??/button>`;
+      <div class="cond-text">${label} <span class="badge ${badgeMap[type]}">${type}</span> <span class="badge bb">자동</span></div>
+      <button class="del-btn" onclick="this.closest('.cond-item').remove();updateSummary()">✕</button>`;
     list.appendChild(el);
 
-    // AppState?먮룄 異붽? (以묐났 泥댄겕)
+    // AppState에도 추가 (중복 체크)
     const alreadyInState = AppState.conditions.absolute.some(
       c => c.student_a === cond.student_a && c.student_b === cond.student_b && c.type === type
     );
@@ -2084,7 +2115,7 @@ function applyAutoConditions(autoConditions) {
   updateSummary();
 }
 
-// ?낅줈?????덈? 議곌굔 紐⑸줉 ?먮룞 ?낅뜲?댄듃
+// 업로드 후 절대 조건 목록 자동 업데이트
 function updateAbsConditions(students, flow) {
   if (flow === 'seat') {
     const list = document.getElementById('seat-abs-list');
@@ -2092,65 +2123,67 @@ function updateAbsConditions(students, flow) {
     list.innerHTML = '';
 
     students.forEach(s => {
-      if (s.vision === '?쏀븿') {
-        list.innerHTML += `<div class="cond-item"><div class="cond-icon ci-blue">?몓</div><div class="cond-text">${s.name} ???쒕젰 ?쏀븿 ????2以?諛곗튂</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">??/button></div>`;
+      if (s.vision === '약함') {
+        list.innerHTML += `<div class="cond-item"><div class="cond-icon ci-blue">👁</div><div class="cond-text">${s.name} — 시력 약함 → 앞 2줄 배치</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">✕</button></div>`;
       }
       if (s.special_needs === 'ADHD') {
-        list.innerHTML += `<div class="cond-item"><div class="cond-icon ci-warn">??/div><div class="cond-text">${s.name} ??ADHD ??援먯궗 洹쇱쿂 ?욎옄由?/div><button class="del-btn" onclick="this.closest('.cond-item').remove()">??/button></div>`;
+        list.innerHTML += `<div class="cond-item"><div class="cond-icon ci-warn">⚡</div><div class="cond-text">${s.name} — ADHD → 교사 근처 앞자리</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">✕</button></div>`;
       } else if (s.special_needs) {
-        list.innerHTML += `<div class="cond-item"><div class="cond-icon ci-warn">??/div><div class="cond-text">${s.name} ??${s.special_needs} ???뱀닔援먯쑁 諛곕젮</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">??/button></div>`;
+        list.innerHTML += `<div class="cond-item"><div class="cond-icon ci-warn">★</div><div class="cond-text">${s.name} — ${s.special_needs} → 특수교육 배려</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">✕</button></div>`;
       }
     });
 
-    // 媛덈벑 愿怨?遺꾨━ 議곌굔 異붽?
-    AppState.relations.filter(r => r.type === '媛덈벑').forEach(r => {
-      list.innerHTML += `<div class="cond-item"><div class="cond-icon ci-red">??/div><div class="cond-text">${r.student_a} ??${r.student_b} ??遺꾨━ (媛덈벑?대젰)</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">??/button></div>`;
+    // 갈등 관계 분리 조건 추가
+    AppState.relations.filter(r => r.type === '갈등').forEach(r => {
+      list.innerHTML += `<div class="cond-item"><div class="cond-icon ci-red">✕</div><div class="cond-text">${r.student_a} ↔ ${r.student_b} — 분리 (갈등이력)</div><button class="del-btn" onclick="this.closest('.cond-item').remove()">✕</button></div>`;
     });
 
   } else if (flow === 'ban') {
     const list = document.getElementById('ban-abs-list');
     if (!list) return;
 
-    // 湲곗〈 ?먮룞 諛곗? ??ぉ 紐⑤몢 ?쒓굅 ???덈줈 洹몃━湲?    list.querySelectorAll('.cond-item').forEach(item => {
+    // 기존 자동 배지 항목 모두 제거 후 새로 그리기
+    list.querySelectorAll('.cond-item').forEach(item => {
       if (item.querySelector('.badge.bb')) item.remove();
     });
 
-    // AppState.conditions.absolute?먯꽌 ?먮룞 議곌굔??珥덇린??(以묐났 諛⑹?)
+    // AppState.conditions.absolute에서 자동 조건도 초기화 (중복 방지)
     AppState.conditions.absolute = AppState.conditions.absolute.filter(c => !c._auto);
 
-    // ?뱀닔援먯쑁 ?숈깮 臾띠뼱???섎굹濡??쒖떆
+    // 특수교육 학생 묶어서 하나로 표시
     const specialStudents = students.filter(s => s.special_needs);
     if (specialStudents.length > 0) {
       const existingSpecial = Array.from(list.querySelectorAll('.cond-text'))
-        .some(el => el.textContent.includes('?뱀닔援먯쑁 諛곕젮'));
+        .some(el => el.textContent.includes('특수교육 배려'));
       if (!existingSpecial) {
         const names = specialStudents.map(s => s.name).join(', ');
         const el = document.createElement('div');
         el.className = 'cond-item';
-        el.innerHTML = `<div class="cond-icon ci-warn">??/div><div class="cond-text">${names} <span class="badge bw">?뱀닔援먯쑁 諛곕젮 (媛?諛?洹좊벑 遺꾨같)</span> <span class="badge bb">?먮룞</span></div>`;
+        el.innerHTML = `<div class="cond-icon ci-warn">★</div><div class="cond-text">${names} <span class="badge bw">특수교육 배려 (각 반 균등 분배)</span> <span class="badge bb">자동</span></div>`;
         list.appendChild(el);
-        // ?섏젙 遺덇? (X 踰꾪듉 ?놁쓬)
+        // 수정 불가 (X 버튼 없음)
       }
     }
 
-    // 愿怨??곗씠?곗뿉??以묎컙 ?댁긽 媛덈벑, ?믪쓬 移쒗븿 ?먮룞 異붽? (?섏젙 遺덇?)
+    // 관계 데이터에서 중간 이상 갈등, 높음 친함 자동 추가 (수정 불가)
     AppState.relations.filter(r =>
-      (r.type === '媛덈벑' && ['?믪쓬','以묎컙'].includes(r.severity)) ||
-      (r.type === '移쒗븿' && r.severity === '?믪쓬')
+      (r.type === '갈등' && ['높음','중간'].includes(r.severity)) ||
+      (r.type === '친함' && r.severity === '높음')
     ).forEach(r => {
-      const type = r.type === '媛덈벑' ? '遺꾨━' : '媛숈? 諛?;
+      const type = r.type === '갈등' ? '분리' : '같은 반';
       const existing = Array.from(list.querySelectorAll('.cond-text'))
         .some(el => el.textContent.includes(r.student_a) && el.textContent.includes(r.student_b));
       if (existing) return;
-      const icon = type === '遺꾨━' ? '?? : '+';
-      const cls = type === '遺꾨━' ? 'ci-red' : 'ci-green';
-      const badge = type === '遺꾨━' ? 'br' : 'bg2';
+      const icon = type === '분리' ? '✕' : '+';
+      const cls = type === '분리' ? 'ci-red' : 'ci-green';
+      const badge = type === '분리' ? 'br' : 'bg2';
       const el = document.createElement('div');
       el.className = 'cond-item';
-      // ?섏젙 遺덇?: X 踰꾪듉 ?놁쓬, ?좉툑 ?꾩씠肄?      el.innerHTML = `<div class="cond-icon ${cls}">${icon}</div><div class="cond-text">${r.student_a} ??${r.student_b} <span class="badge ${badge}">${type}</span> <span class="badge bb">?먮룞</span></div><span style="font-size:11px;color:#bbb;margin-left:auto;padding-right:4px">?뵏</span>`;
+      // 수정 불가: X 버튼 없음, 잠금 아이콘
+      el.innerHTML = `<div class="cond-icon ${cls}">${icon}</div><div class="cond-text">${r.student_a} ↔ ${r.student_b} <span class="badge ${badge}">${type}</span> <span class="badge bb">자동</span></div><span style="font-size:11px;color:#bbb;margin-left:auto;padding-right:4px">🔒</span>`;
       list.appendChild(el);
 
-      // AppState?먮룄 異붽? (_auto ?뚮옒洹몃줈 以묐났 諛⑹?)
+      // AppState에도 추가 (_auto 플래그로 중복 방지)
       const already = AppState.conditions.absolute.some(
         c => c.student_a === r.student_a && c.student_b === r.student_b && c.type === type
       );
@@ -2167,9 +2200,9 @@ function updateAbsConditions(students, flow) {
 }
 
 async function loadMockData() {
-  showLoading('?섑뵆 ?곗씠??遺덈윭?ㅻ뒗 以?..');
+  showLoading('샘플 데이터 불러오는 중...');
   try {
-    // 紐⑹뾽 ?곗씠??30紐?諛깆뿏?쒕줈 ?꾩넚
+    // 목업 데이터 30명 백엔드로 전송
     const res = await fetch(`${BASE_URL}/students/bulk`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -2178,47 +2211,48 @@ async function loadMockData() {
     const data = await res.json();
     AppState.students = data;
     await loadStudents();
-    showToast('?섑뵆 ?곗씠??30紐?濡쒕뱶 ?꾨즺!');
+    showToast('샘플 데이터 30명 로드 완료!');
   } catch(e) {
-    // 諛깆뿏???놁쑝硫?洹몃깷 ?붾㈃留?梨꾩?
+    // 백엔드 없으면 그냥 화면만 채움
     AppState.students = MOCK_STUDENTS;
     renderStudentTable(MOCK_STUDENTS);
     updateStudentStats(MOCK_STUDENTS);
-    showToast('?섑뵆 ?곗씠??濡쒕뱶 ?꾨즺 (?ㅽ봽?쇱씤 紐⑤뱶)');
+    showToast('샘플 데이터 로드 완료 (오프라인 모드)');
   } finally {
     hideLoading();
   }
 }
 
-// 紐⑹뾽 ?곗씠??30紐?const MOCK_STUDENTS = [
-  {id:1, name:'源誘쇱?', gender:'??, academic_level:'??, height:168, vision:'?뺤긽', attention_level:'?믪쓬', special_needs:null, teacher_note:'由щ뜑??씠 媛뺥븯??諛⑺뼢??遺?뺤쟻?쇰줈 ?먮? ???덉쓬'},
-  {id:2, name:'?댁꽌??, gender:'??, academic_level:'??, height:158, vision:'?쏀븿', attention_level:'?믪쓬', special_needs:null, teacher_note:'?깆쟻 ?곗닔?섎ŉ 移쒗솕???믪쓬'},
-  {id:3, name:'諛뺤???, gender:'??, academic_level:'以?, height:162, vision:'?뺤긽', attention_level:'??쓬', special_needs:null, teacher_note:'移쒗븳 移쒓뎄媛 嫄곗쓽 ?놁쓬. 愿怨꾨쭩 怨좊┰ ?곹깭'},
-  {id:4, name:'?좊룞??, gender:'??, academic_level:'??, height:163, vision:'?뺤긽', attention_level:'??쓬', special_needs:'ADHD', teacher_note:'ADHD 吏꾨떒. 援먯궗 洹쇱쿂 ?먮━ ?꾩슂'},
-  {id:5, name:'?쒖?誘?, gender:'??, academic_level:'??, height:160, vision:'?쏀븿', attention_level:'?믪쓬', special_needs:null, teacher_note:'紐⑤쾾?? 梨낆엫媛?媛뺥븯怨?湲띿젙???곹뼢'},
-  {id:6, name:'?ㅼ듅??, gender:'??, academic_level:'以?, height:165, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'?대룞??醫뗭븘?섎ŉ ?섏뾽 以??곕쭔?댁쭏 ???덉쓬'},
-  {id:7, name:'?≪???, gender:'??, academic_level:'??, height:161, vision:'?뺤긽', attention_level:'?믪쓬', special_needs:null, teacher_note:'由щ뜑??낵 怨듦컧 ?λ젰 ?곸썡. 媛덈벑 以묒옱 ??븷'},
-  {id:8, name:'?ㅼ옱??, gender:'??, academic_level:'??, height:172, vision:'?뺤긽', attention_level:'?믪쓬', special_needs:null, teacher_note:'?숈뾽怨???멸?怨?紐⑤몢 ?곗닔'},
-  {id:9, name:'媛뺤삁?', gender:'??, academic_level:'以?, height:159, vision:'?쏀븿', attention_level:'以묎컙', special_needs:null, teacher_note:'?덉껜?μ뿉 ?뚯쭏 ?덉쓬'},
-  {id:10, name:'?뺣룄??, gender:'??, academic_level:'??, height:170, vision:'?뺤긽', attention_level:'??쓬', special_needs:null, teacher_note:'?숈뒿 ?숆린媛 ??쓬. 愿???꾩슂'},
-  {id:11, name:'?④턿??, gender:'??, academic_level:'以?, height:168, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'移쒗솕??醫뗪퀬 ?덈줈???섍꼍 ?곸쓳 鍮좊쫫'},
-  {id:12, name:'?꾪븯??, gender:'??, academic_level:'??, height:155, vision:'?뺤긽', attention_level:'??쓬', special_needs:null, teacher_note:'理쒓렐 ?꾪븰 ???숈깮. ?꾩쭅 ?곸쓳 以?},
-  {id:13, name:'諛⑹쑀吏?, gender:'??, academic_level:'??, height:163, vision:'?뺤긽', attention_level:'?믪쓬', special_needs:null, teacher_note:'?섑븰 ?щ┝?쇱븘???섏긽. ?쇰━???ш퀬 ?곗뼱??},
-  {id:14, name:'諛곗꽦誘?, gender:'??, academic_level:'以?, height:167, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'?좊㉧ 媛먭컖 ?덉쓬. 吏?섏튌 ???덉쓬'},
-  {id:15, name:'?곸듅??, gender:'??, academic_level:'??, height:161, vision:'?뺤긽', attention_level:'??쓬', special_needs:'?숈뒿?μ븷', teacher_note:'?숈뒿?μ븷 吏꾨떒. 媛쒕퀎??吏???꾩슂'},
-  {id:16, name:'?띿???, gender:'??, academic_level:'??, height:164, vision:'?뺤긽', attention_level:'??쓬', special_needs:null, teacher_note:'?먯〈媛???쓬. 移?갔怨?寃⑸젮????諛섏쓳'},
-  {id:17, name:'援щ굹??, gender:'??, academic_level:'以?, height:159, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'怨듦컧 ?λ젰 ?믪쓬. 移쒓뎄 怨좊? ???ㅼ뼱以?},
-  {id:18, name:'諛깆꽌??, gender:'??, academic_level:'??, height:162, vision:'?뺤긽', attention_level:'?믪쓬', special_needs:null, teacher_note:'?꾧탳 ?꾩썝 寃쏀뿕. 梨낆엫媛먭낵 異붿쭊??媛뺥븿'},
-  {id:19, name:'?꾩???, gender:'??, academic_level:'以?, height:173, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'寃쎌웳??媛뺥빐 媛??媛덈벑 ?좊컻'},
-  {id:20, name:'梨꾨┛', gender:'??, academic_level:'以?, height:160, vision:'?쏀븿', attention_level:'?믪쓬', special_needs:null, teacher_note:'瑗쇨세?섍퀬 梨낆엫媛?媛뺥븿'},
-  {id:21, name:'怨좏깭??, gender:'??, academic_level:'??, height:166, vision:'?뺤긽', attention_level:'??쓬', special_needs:null, teacher_note:'誘몄닠???щ뒫 ?덉쓬. ?먯떊媛??μ긽 ?꾩슂'},
-  {id:22, name:'沅뚮???, gender:'??, academic_level:'以?, height:158, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'?ㅻЦ??媛?? ?쒓뎅???μ닕?섎굹 媛???대젮?'},
-  {id:23, name:'?쇰???, gender:'??, academic_level:'以?, height:167, vision:'?쏀븿', attention_level:'以묎컙', special_needs:null, teacher_note:'李⑤텇?섍퀬 ?좎쨷?? ?뚯쭛???쒕룞?먯꽌 媛뺤젏'},
-  {id:24, name:'瑜섑븯?', gender:'??, academic_level:'以?, height:156, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'議곗슜?섍퀬 ?깆떎?? ?뚯닔??移쒗븳 移쒓뎄? 源딆? 愿怨?},
-  {id:25, name:'臾명쁽??, gender:'??, academic_level:'??, height:169, vision:'?뺤긽', attention_level:'?믪쓬', special_needs:null, teacher_note:'?낆꽌??留롪퀬 ?ш퀬??源딆쓬. 諛쒗몴??爰쇰젮??},
-  {id:26, name:'?ъ옱??, gender:'??, academic_level:'以?, height:171, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'?대룞 ?λ젰 ?곗뼱?? 湲띿젙??諛⑺뼢?쇰줈 ?묒슜'},
-  {id:27, name:'?몄?吏', gender:'??, academic_level:'??, height:154, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'理쒓렐 媛???섍꼍 蹂?붾줈 ?щ━???꾩텞'},
-  {id:28, name:'?꾪븯??, gender:'??, academic_level:'??, height:156, vision:'?쏀븿', attention_level:'以묎컙', special_needs:null, teacher_note:'?뚭레?곸씠???쒕쾲 移쒗빐吏硫?源딆? 愿怨??좎?'},
-  {id:29, name:'理쒖닔??, gender:'??, academic_level:'以?, height:155, vision:'?뺤긽', attention_level:'以묎컙', special_needs:null, teacher_note:'諛앷퀬 湲띿젙?? 遺꾩쐞湲?硫붿씠而???븷'},
-  {id:30, name:'?띿???, gender:'??, academic_level:'??, height:165, vision:'?뺤긽', attention_level:'??쓬', special_needs:null, teacher_note:'?숈뒿 吏???꾩슂. 泥댁쑁??媛뺤젏 ?덉쓬'}
+// 목업 데이터 30명
+const MOCK_STUDENTS = [
+  {id:1, name:'김민준', gender:'남', academic_level:'상', height:168, vision:'정상', attention_level:'높음', special_needs:null, teacher_note:'리더십이 강하나 방향이 부정적으로 흐를 때 있음'},
+  {id:2, name:'이서연', gender:'여', academic_level:'상', height:158, vision:'약함', attention_level:'높음', special_needs:null, teacher_note:'성적 우수하며 친화력 높음'},
+  {id:3, name:'박지호', gender:'남', academic_level:'중', height:162, vision:'정상', attention_level:'낮음', special_needs:null, teacher_note:'친한 친구가 거의 없음. 관계망 고립 상태'},
+  {id:4, name:'신동현', gender:'남', academic_level:'하', height:163, vision:'정상', attention_level:'낮음', special_needs:'ADHD', teacher_note:'ADHD 진단. 교사 근처 자리 필요'},
+  {id:5, name:'한지민', gender:'여', academic_level:'상', height:160, vision:'약함', attention_level:'높음', special_needs:null, teacher_note:'모범생. 책임감 강하고 긍정적 영향'},
+  {id:6, name:'오승현', gender:'남', academic_level:'중', height:165, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'운동을 좋아하며 수업 중 산만해질 때 있음'},
+  {id:7, name:'송지우', gender:'여', academic_level:'상', height:161, vision:'정상', attention_level:'높음', special_needs:null, teacher_note:'리더십과 공감 능력 탁월. 갈등 중재 역할'},
+  {id:8, name:'윤재원', gender:'남', academic_level:'상', height:172, vision:'정상', attention_level:'높음', special_needs:null, teacher_note:'학업과 대인관계 모두 우수'},
+  {id:9, name:'강예은', gender:'여', academic_level:'중', height:159, vision:'약함', attention_level:'중간', special_needs:null, teacher_note:'예체능에 소질 있음'},
+  {id:10, name:'정도윤', gender:'남', academic_level:'하', height:170, vision:'정상', attention_level:'낮음', special_needs:null, teacher_note:'학습 동기가 낮음. 관심 필요'},
+  {id:11, name:'남궁현', gender:'남', academic_level:'중', height:168, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'친화력 좋고 새로운 환경 적응 빠름'},
+  {id:12, name:'도하영', gender:'여', academic_level:'하', height:155, vision:'정상', attention_level:'낮음', special_needs:null, teacher_note:'최근 전학 온 학생. 아직 적응 중'},
+  {id:13, name:'방유진', gender:'여', academic_level:'상', height:163, vision:'정상', attention_level:'높음', special_needs:null, teacher_note:'수학 올림피아드 수상. 논리적 사고 뛰어남'},
+  {id:14, name:'배성민', gender:'남', academic_level:'중', height:167, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'유머 감각 있음. 지나칠 때 있음'},
+  {id:15, name:'탁승우', gender:'남', academic_level:'하', height:161, vision:'정상', attention_level:'낮음', special_needs:'학습장애', teacher_note:'학습장애 진단. 개별화 지원 필요'},
+  {id:16, name:'홍준서', gender:'남', academic_level:'하', height:164, vision:'정상', attention_level:'낮음', special_needs:null, teacher_note:'자존감 낮음. 칭찬과 격려에 잘 반응'},
+  {id:17, name:'구나연', gender:'여', academic_level:'중', height:159, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'공감 능력 높음. 친구 고민 잘 들어줌'},
+  {id:18, name:'백서희', gender:'여', academic_level:'상', height:162, vision:'정상', attention_level:'높음', special_needs:null, teacher_note:'전교 임원 경험. 책임감과 추진력 강함'},
+  {id:19, name:'엄준혁', gender:'남', academic_level:'중', height:173, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'경쟁심 강해 가끔 갈등 유발'},
+  {id:20, name:'채린', gender:'여', academic_level:'중', height:160, vision:'약함', attention_level:'높음', special_needs:null, teacher_note:'꼼꼼하고 책임감 강함'},
+  {id:21, name:'고태양', gender:'남', academic_level:'하', height:166, vision:'정상', attention_level:'낮음', special_needs:null, teacher_note:'미술에 재능 있음. 자신감 향상 필요'},
+  {id:22, name:'권민서', gender:'여', academic_level:'중', height:158, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'다문화 가정. 한국어 능숙하나 가끔 어려움'},
+  {id:23, name:'라민성', gender:'남', academic_level:'중', height:167, vision:'약함', attention_level:'중간', special_needs:null, teacher_note:'차분하고 신중함. 소집단 활동에서 강점'},
+  {id:24, name:'류하은', gender:'여', academic_level:'중', height:156, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'조용하고 성실함. 소수의 친한 친구와 깊은 관계'},
+  {id:25, name:'문현우', gender:'남', academic_level:'상', height:169, vision:'정상', attention_level:'높음', special_needs:null, teacher_note:'독서량 많고 사고력 깊음. 발표는 꺼려함'},
+  {id:26, name:'심재훈', gender:'남', academic_level:'중', height:171, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'운동 능력 뛰어남. 긍정적 방향으로 작용'},
+  {id:27, name:'노은지', gender:'여', academic_level:'하', height:154, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'최근 가정 환경 변화로 심리적 위축'},
+  {id:28, name:'전하늘', gender:'여', academic_level:'하', height:156, vision:'약함', attention_level:'중간', special_needs:null, teacher_note:'소극적이나 한번 친해지면 깊은 관계 유지'},
+  {id:29, name:'최수아', gender:'여', academic_level:'중', height:155, vision:'정상', attention_level:'중간', special_needs:null, teacher_note:'밝고 긍정적. 분위기 메이커 역할'},
+  {id:30, name:'홍준희', gender:'남', academic_level:'하', height:165, vision:'정상', attention_level:'낮음', special_needs:null, teacher_note:'학습 지원 필요. 체육에 강점 있음'}
 ];
